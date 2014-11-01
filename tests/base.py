@@ -4,21 +4,30 @@ import requests
 import threading
 
 
-class ServerRunner(object):
+class ClientRunner(object):
 
     def __init__(self, app, middleware=None):
         self.app = app
         self.middleware = middleware
-        self.thread = None
-        self._stop = False
 
-    def run(self):
-        self._stop = False
-        self.thread = threading.Thread(target=self._run)
-        self.thread.start()
+    def run(self, client):
+        self.stop = False
+        self.started = False
 
-    def _run(self):
-        #print('start')
+        def run_client():
+            while not self.started:
+                time.sleep(0.01)
+            try:
+                self.result = client()
+            except Exception as e:
+                self.result = e
+            finally:
+                self.env = self.app.environ
+                self.stop = True
+
+        thread = threading.Thread(target=run_client)
+        thread.start()
+
         server.listen(("0.0.0.0", 8000))
         def check():
             if self._stop:
@@ -30,22 +39,14 @@ class ServerRunner(object):
         else:
             server.run(self.app)
 
-    def stop(self):
-        self._stop = True
-        self.thread.join()
+        thread.join()
+        return self.env, self.result
 
 
 def run_client(client=None, app=None, middleware=None):
     application = app()
-    s = ServerRunner(application, middleware)
-    s.run()
-    time.sleep(0.2)
-    try:
-        res = client()
-        env = application.environ
-        return env, res
-    finally:
-        s.stop()
+    s = ClientRunner(application, middleware)
+    return s.run(client)
 
 
 class BaseApp(object):
