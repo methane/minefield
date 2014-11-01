@@ -47,13 +47,10 @@ def send_data(addr=DEFAULT_ADDR, method=DEFAULT_METHOD, path=DEFAULT_PATH,
         if post_data:
             sock.send(to_bytes(post_data))
             sock.send(b"\r\n")
-
-        data = sock.recv(1024 * 2)
-        return data
-    except:
-        import traceback
-        print(traceback.format_exc())
-        raise
+    except socket.error:
+        return sock.recv(1024 * 2)
+    else:
+        return sock.recv(1024 * 2)
 
 class App(BaseApp):
 

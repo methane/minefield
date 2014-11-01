@@ -1,23 +1,7 @@
 from minefield import server
 import time
 import requests
-
-
-running = False
-
-def start_server(app, middleware=None):
-    global running 
-    if running:
-        return
-
-    server.listen(("0.0.0.0", 8000))
-    running = True
-    if middleware:
-        server.run(middleware(app))
-    else:
-        server.run(app)
-
-    return app.environ
+import threading
 
 
 class ServerRunner(object):
@@ -25,53 +9,44 @@ class ServerRunner(object):
     def __init__(self, app, middleware=None):
         self.app = app
         self.middleware = middleware
-        self.running = False
+        self.thread = None
+        self._stop = False
 
-    def run(self, shutdown=False):
-        if self.running:
-            return
+    def run(self):
+        self._stop = False
+        self.thread = threading.Thread(target=self._run)
+        self.thread.start()
 
+    def _run(self):
+        #print('start')
         server.listen(("0.0.0.0", 8000))
-        self.running = True
-        if shutdown:
-            server.schedule_call(1, server.shutdown, 3)
+        def check():
+            if self._stop:
+                #print('shutdown')
+                server.shutdown()
+        server.set_watchdog(check)
         if self.middleware:
             server.run(self.middleware(self.app))
         else:
             server.run(self.app)
 
-class ClientRunner(object):
-
-
-    def __init__(self, app, func, shutdown=True):
-        self.func = func
-        self.app = app
-        self.shutdown = shutdown
-
-    def run(self):
-
-        def _call():
-            try:
-                r = self.func()
-                self.receive_data = r
-                self.environ = self.app.environ
-            finally:
-                if self.shutdown:
-                    server.shutdown(1)
-
-        server.spawn(_call)
-
-    def get_result(self):
-        return (self.environ, self.receive_data)
+    def stop(self):
+        self._stop = True
+        self.thread.join()
 
 
 def run_client(client=None, app=None, middleware=None):
     application = app()
     s = ServerRunner(application, middleware)
-    r = ClientRunner(application, client)
-    r.run()
     s.run()
-    return r.environ, r.receive_data
+    time.sleep(0.2)
+    try:
+        res = client()
+        env = application.environ
+        return env, res
+    finally:
+        s.stop()
+
 
 class BaseApp(object):
 
