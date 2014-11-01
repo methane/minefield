@@ -48,8 +48,8 @@ class Logger(object):
     access_fmt = "%(message)s"
 
     def __init__(self, cfg=None):
-        self.error_log = logging.getLogger("meinheld.error")
-        self.access_log = logging.getLogger("meinheld.access")
+        self.error_log = logging.getLogger("minefield.error")
+        self.access_log = logging.getLogger("minefield.access")
         self.error_handlers = []
         self.access_handlers = []
         self.setup(cfg)
@@ -159,7 +159,7 @@ class Logger(object):
 
     def _get_handler(self, log):
         for h in log.handlers:
-            if getattr(h, "_meinheld", False) == True:
+            if getattr(h, "_minefield", False) == True:
                 return h
 
     def _set_handler(self, log, fmt):
@@ -168,7 +168,7 @@ class Logger(object):
             log.handlers.remove(h)
 
         h = logging.StreamHandler()
-        h._meinheld = True
+        h._minefield = True
         h.setFormatter(fmt)
         log.addHandler(h)
 
@@ -223,7 +223,6 @@ def _access(self, environ):
         self.error(*sys.exc_info())
 
 logger = Logger()
-from meinheld import server
+from minefield import server
 server.set_access_logger(logger)
 server.set_error_logger(logger)
-
