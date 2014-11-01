@@ -1,10 +1,9 @@
+import os
 import sys
-import types
-from gunicorn.workers.base import Worker
-from gunicorn.glogging import Logger
 from meinheld import server
 from meinheld.mlogging import _access, _error
-import os
+from gunicorn.workers.base import Worker
+from gunicorn.glogging import Logger
 
 class MeinheldWorker(Worker):
 
