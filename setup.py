@@ -26,11 +26,11 @@ def get_picoev_file():
     poller_file = None
 
     if "Linux" == platform.system():
-        poller_file = 'meinheld/server/picoev_epoll.c'
+        poller_file = 'minefield/server/picoev_epoll.c'
     elif "Darwin" == platform.system():
-        poller_file = 'meinheld/server/picoev_kqueue.c'
+        poller_file = 'minefield/server/picoev_kqueue.c'
     elif "FreeBSD" == platform.system():
-        poller_file = 'meinheld/server/picoev_kqueue.c'
+        poller_file = 'minefield/server/picoev_kqueue.c'
     else:
         print("Sorry, not support .")
         sys.exit(1)
@@ -67,12 +67,11 @@ setup(name='minefield',
     version="0.5.6",
     description="High performance asynchronous Python WSGI Web Server",
     long_description=read('README.rst'),
-    author='yutaka matsubara',
-    author_email='yutaka.matsubara@gmail.com',
-    url='http://meinheld.org',
+    author='INADA Naoki',
+    author_email='songofacandy@gmail.com',
     license='BSD',
     platforms='Linux, BSD, Darwin',
-    packages= ['meinheld'],
+    packages= ['minefield'],
     install_requires=install_requires,
 
     entry_points="""
