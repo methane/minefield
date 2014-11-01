@@ -843,9 +843,7 @@ read_request(picoev_loop *loop, int fd, client_t *client, char call_time_update)
         picoev_set_timeout(loop, fd, READ_TIMEOUT_SECS);
     }
 
-    Py_BEGIN_ALLOW_THREADS
     r = read(client->fd, buf, sizeof(buf));
-    Py_END_ALLOW_THREADS
     switch (r) {
         case 0: 
             return set_read_error(client, 503);
