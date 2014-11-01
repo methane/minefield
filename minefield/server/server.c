@@ -76,8 +76,6 @@ static PyObject *request_time_key = NULL; // REQUEST_TIME
 static PyObject *local_time_key = NULL; // LOCAL_TIME
 static PyObject *empty_string = NULL; //""
 
-static PyObject *app_handler_func = NULL;
-
 /* gunicorn */
 static int spinner = 0;
 static int tempfile_fd = 0;
@@ -150,30 +148,6 @@ realloc_pendings(void)
     }
     return 1;
 }
-
-static void
-destroy_pendings(void)
-{
-    int i = 0, len; 
-    TimerObject *timer = NULL;
-    TimerObject **t = g_pendings->q;
-    if (g_pendings == NULL) {
-        return;
-    }
-    len = g_pendings->size;
-    t += i;
-
-    while(len--) {
-        timer = *t;
-        Py_DECREF(timer);
-        t++;
-    }
-
-    free(g_pendings->q);
-    PyMem_Free(g_pendings);
-    g_pendings = NULL;
-}
-
 
 static void
 client_t_list_fill(void)
@@ -501,29 +475,21 @@ check_status_code(client_t *client)
     return 1;
 }
 
-static PyObject *
-app_handler(PyObject *self, PyObject *args)
+static void
+app_handler(PyObject *env)
 {
     int ret, active;
     PyObject *wsgi_args = NULL, *start = NULL, *res = NULL;
-    PyObject *env = NULL;
     ClientObject *pyclient;
     client_t *client;
     request *req;
     response_status status;
 
-    if (!PyArg_ParseTuple(args, "O:app_handler", &env)) {
-        return NULL;
-    }
     pyclient = (ClientObject*)PyDict_GetItem(env, client_key);
     client = pyclient->client;
 
     req = client->current_req;
     start = create_start_response(client);
-
-    if (!start) {
-        return NULL;
-    }
 
     DEBUG("call wsgi app");
     wsgi_args = PyTuple_Pack(2, env, start);
@@ -546,7 +512,7 @@ app_handler(PyObject *self, PyObject *args)
     if (client->response_closed) {
         //closed
         close_client(client);
-        Py_RETURN_NONE;
+        return;
     }
     status = response_start(client);
 
@@ -567,7 +533,7 @@ app_handler(PyObject *self, PyObject *args)
             // send OK
             close_client(client);
     }
-    Py_RETURN_NONE;
+    return;
 
 error:
     client->status_code = 500;
@@ -579,35 +545,17 @@ error:
     call_error_logger();
     send_error_page(client);
     close_client(client);
-    Py_RETURN_NONE;
-}
-
-static PyMethodDef app_handler_def = {"_app_handler",   (PyCFunction)app_handler, METH_VARARGS, 0};
-
-static PyObject*
-get_app_handler(void)
-{
-    if (app_handler_func == NULL) {
-        app_handler_func = PyCFunction_NewEx(&app_handler_def, (PyObject *)NULL, NULL);
-    }
-    //Py_INCREF(app_handler_func);
-    return app_handler_func;
 }
 
 static void
 call_wsgi_handler(client_t *client)
 {
-    PyObject *handler, *args, *res;
     request *req = NULL;
 
-    handler = get_app_handler();
     req = client->current_req;
     current_client = PyDict_GetItem(req->environ, client_key);
 
-    args = PyTuple_Pack(1, req->environ);
-    res = PyObject_CallObject(handler, args);
-    Py_DECREF(args);
-    Py_XDECREF(res);
+    app_handler(req->environ);
 }
 
 static void
@@ -850,27 +798,6 @@ read_timeout(int fd, client_t *client)
     RDEBUG("** read timeout fd:%d", fd);
     //timeout
     return set_read_error(client, 408);
-}
-
-static int
-compare_key(PyObject *env, char *key, char *compare)
-{
-    int ret = -1;
-    char *val = NULL;
-
-    PyObject *c = PyDict_GetItemString(env, key);
-    if (c) {
-#ifdef PY3
-        c = PyUnicode_AsLatin1String(c);
-        val = PyBytes_AS_STRING(c);
-#else
-        val = PyBytes_AS_STRING(c);
-        Py_INCREF(c);
-#endif
-        ret = strcasecmp(val, compare);
-    }
-    Py_XDECREF(c);
-    return ret;
 }
 
 static int
