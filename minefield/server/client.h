@@ -1,7 +1,7 @@
 #ifndef CLIENT_H
 #define CLIENT_H
 
-#include "meinheld.h"
+#include "minefield.h"
 #include "request.h"
 
 typedef struct _client {

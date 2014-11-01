@@ -1,7 +1,7 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#include "meinheld.h"
+#include "minefield.h"
 
 typedef enum{
     WRITE_OK,

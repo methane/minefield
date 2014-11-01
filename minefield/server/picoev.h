@@ -37,7 +37,7 @@ extern "C" {
 # define PICOEV_INLINE static __inline__
 #endif
 
-#include "meinheld.h"
+#include "minefield.h"
 #include <assert.h>
 #include <limits.h>
 #include <stdlib.h>

@@ -1,8 +1,8 @@
 include README.rst
 include LICENSE
 include CHANGES.rst
-include meinheld/server/picoev_epoll.c
-include meinheld/server/picoev_kqueue.c
-include meinheld/server/picoev_select.c
-include meinheld/server/*.h
+include minefield/server/picoev_epoll.c
+include minefield/server/picoev_kqueue.c
+include minefield/server/picoev_select.c
+include minefield/server/*.h
 

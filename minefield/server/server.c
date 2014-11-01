@@ -74,7 +74,7 @@ PyObject* current_client;
 PyObject* timeout_error;
 
 /* reuse object */
-static PyObject *client_key = NULL; //meinheld.client
+static PyObject *client_key = NULL; //minefield.client
 static PyObject *wsgi_input_key = NULL; //wsgi.input key
 static PyObject *status_code_key = NULL; //STATUS_CODE
 static PyObject *bytes_sent_key = NULL; // SEND_BYTES
@@ -1311,7 +1311,7 @@ setup_server_env(void)
     buffer_list_fill();
     InputObject_list_fill();
     
-    client_key = NATIVE_FROMSTRING("meinheld.client");
+    client_key = NATIVE_FROMSTRING("minefield.client");
     wsgi_input_key = NATIVE_FROMSTRING("wsgi.input");
     status_code_key = NATIVE_FROMSTRING("STATUS_CODE");
     bytes_sent_key = NATIVE_FROMSTRING("SEND_BYTES");
@@ -1547,7 +1547,7 @@ set_listen_socket(PyObject *temp)
 }
 
 static PyObject *
-meinheld_listen(PyObject *self, PyObject *args, PyObject *kwds)
+minefield_listen(PyObject *self, PyObject *args, PyObject *kwds)
 {
     PyObject *o = NULL;
     PyObject *sock_fd = NULL;
@@ -1608,7 +1608,7 @@ sigpipe_cb(int signum)
 }
 
 static PyObject *
-meinheld_access_log(PyObject *self, PyObject *args)
+minefield_access_log(PyObject *self, PyObject *args)
 {
     PyObject *o = NULL;
     PyObject *func = NULL;
@@ -1638,7 +1638,7 @@ meinheld_access_log(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-meinheld_error_log(PyObject *self, PyObject *args)
+minefield_error_log(PyObject *self, PyObject *args)
 {
     PyObject *o = NULL;
     PyObject *func = NULL;
@@ -1667,7 +1667,7 @@ meinheld_error_log(PyObject *self, PyObject *args)
 
 
 static PyObject *
-meinheld_stop(PyObject *self, PyObject *args, PyObject *kwds)
+minefield_stop(PyObject *self, PyObject *args, PyObject *kwds)
 {
     int timeout = 0;
 
@@ -1815,7 +1815,7 @@ close_all_sockets(void)
 }
 
 static PyObject *
-meinheld_run_loop(PyObject *self, PyObject *args, PyObject *kwds)
+minefield_run_loop(PyObject *self, PyObject *args, PyObject *kwds)
 {
     PyObject *watchdog_result;
     int silent = 0;
@@ -1906,7 +1906,7 @@ meinheld_run_loop(PyObject *self, PyObject *args, PyObject *kwds)
 
 
 PyObject *
-meinheld_set_keepalive(PyObject *self, PyObject *args)
+minefield_set_keepalive(PyObject *self, PyObject *args)
 {
     int on;
     if (!PyArg_ParseTuple(args, "i", &on))
@@ -1925,13 +1925,13 @@ meinheld_set_keepalive(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_get_keepalive(PyObject *self, PyObject *args)
+minefield_get_keepalive(PyObject *self, PyObject *args)
 {
     return Py_BuildValue("i", is_keep_alive);
 }
 
 PyObject *
-meinheld_set_backlog(PyObject *self, PyObject *args)
+minefield_set_backlog(PyObject *self, PyObject *args)
 {
     int temp;
     if (!PyArg_ParseTuple(args, "i", &temp))
@@ -1945,13 +1945,13 @@ meinheld_set_backlog(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_get_backlog(PyObject *self, PyObject *args)
+minefield_get_backlog(PyObject *self, PyObject *args)
 {
     return Py_BuildValue("i", backlog);
 }
 
 PyObject *
-meinheld_set_picoev_max_fd(PyObject *self, PyObject *args)
+minefield_set_picoev_max_fd(PyObject *self, PyObject *args)
 {
     int temp;
     if (!PyArg_ParseTuple(args, "i", &temp))
@@ -1965,13 +1965,13 @@ meinheld_set_picoev_max_fd(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_get_picoev_max_fd(PyObject *self, PyObject *args)
+minefield_get_picoev_max_fd(PyObject *self, PyObject *args)
 {
     return Py_BuildValue("i", max_fd);
 }
 
 PyObject *
-meinheld_set_max_content_length(PyObject *self, PyObject *args)
+minefield_set_max_content_length(PyObject *self, PyObject *args)
 {
     int temp;
     if (!PyArg_ParseTuple(args, "i", &temp))
@@ -1985,13 +1985,13 @@ meinheld_set_max_content_length(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_get_max_content_length(PyObject *self, PyObject *args)
+minefield_get_max_content_length(PyObject *self, PyObject *args)
 {
     return Py_BuildValue("i", max_content_length);
 }
 
 PyObject *
-meinheld_set_client_body_buffer_size(PyObject *self, PyObject *args)
+minefield_set_client_body_buffer_size(PyObject *self, PyObject *args)
 {
     int temp;
     if (!PyArg_ParseTuple(args, "i", &temp))
@@ -2005,13 +2005,13 @@ meinheld_set_client_body_buffer_size(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_get_client_body_buffer_size(PyObject *self, PyObject *args)
+minefield_get_client_body_buffer_size(PyObject *self, PyObject *args)
 {
     return Py_BuildValue("i", client_body_buffer_size);
 }
 
 PyObject *
-meinheld_set_listen_socket(PyObject *self, PyObject *args)
+minefield_set_listen_socket(PyObject *self, PyObject *args)
 {
     PyObject *temp;
     if (!PyArg_ParseTuple(args, "O:listen_socket", &temp)) {
@@ -2021,7 +2021,7 @@ meinheld_set_listen_socket(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_set_fastwatchdog(PyObject *self, PyObject *args)
+minefield_set_fastwatchdog(PyObject *self, PyObject *args)
 {
     int _fd;
     int _ppid;
@@ -2037,7 +2037,7 @@ meinheld_set_fastwatchdog(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_set_watchdog(PyObject *self, PyObject *args)
+minefield_set_watchdog(PyObject *self, PyObject *args)
 {
     PyObject *temp;
     if (!PyArg_ParseTuple(args, "O:watchdog", &temp))
@@ -2055,7 +2055,7 @@ meinheld_set_watchdog(PyObject *self, PyObject *args)
 
 /*
 PyObject *
-meinheld_set_process_name(PyObject *self, PyObject *args)
+minefield_set_process_name(PyObject *self, PyObject *args)
 {
 #ifdef linux
 
@@ -2081,7 +2081,7 @@ meinheld_set_process_name(PyObject *self, PyObject *args)
 }*/
 
 PyObject *
-meinheld_suspend_client(PyObject *self, PyObject *args)
+minefield_suspend_client(PyObject *self, PyObject *args)
 {
 
 #ifdef WITH_GREENLET
@@ -2125,8 +2125,8 @@ meinheld_suspend_client(PyObject *self, PyObject *args)
         parent = greenlet_getparent(pyclient->greenlet);
 
         set_so_keepalive(client->fd, 1);
-        BDEBUG("meinheld_suspend_client pyclient:%p client:%p fd:%d", pyclient, client, client->fd);
-        BDEBUG("meinheld_suspend_client active ? %d", picoev_is_active(main_loop, client->fd));
+        BDEBUG("minefield_suspend_client pyclient:%p client:%p fd:%d", pyclient, client, client->fd);
+        BDEBUG("minefield_suspend_client active ? %d", picoev_is_active(main_loop, client->fd));
         active = picoev_is_active(main_loop, client->fd);
         if (timeout > 0) {
             ret = picoev_add(main_loop, client->fd, PICOEV_TIMEOUT, timeout, timeout_error_callback, (void *)pyclient);
@@ -2150,7 +2150,7 @@ meinheld_suspend_client(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_resume_client(PyObject *self, PyObject *args)
+minefield_resume_client(PyObject *self, PyObject *args)
 {
 #ifdef WITH_GREENLET
     PyObject *temp, *switch_args, *switch_kwargs;
@@ -2192,8 +2192,8 @@ meinheld_resume_client(PyObject *self, PyObject *args)
 
         pyclient->suspended = 0;
         /* pyclient->resumed = 1; */
-        DEBUG("meinheld_resume_client pyclient:%p client:%p fd:%d", pyclient, pyclient->client, pyclient->client->fd);
-        DEBUG("meinheld_resume_client active ? %d", picoev_is_active(main_loop, pyclient->client->fd));
+        DEBUG("minefield_resume_client pyclient:%p client:%p fd:%d", pyclient, pyclient->client, pyclient->client->fd);
+        DEBUG("minefield_resume_client active ? %d", picoev_is_active(main_loop, pyclient->client->fd));
         //clear event
         active = picoev_is_active(main_loop, client->fd);
         ret = picoev_add(main_loop, client->fd, PICOEV_WRITE, 0, trampoline_callback, (void *)pyclient);
@@ -2211,7 +2211,7 @@ meinheld_resume_client(PyObject *self, PyObject *args)
 }
 
 PyObject *
-meinheld_cancel_wait(PyObject *self, PyObject *args)
+minefield_cancel_wait(PyObject *self, PyObject *args)
 {
 #ifdef WITH_GREENLET
     int fd;
@@ -2237,7 +2237,7 @@ meinheld_cancel_wait(PyObject *self, PyObject *args)
 
 
 static PyObject*
-meinheld_trampoline(PyObject *self, PyObject *args, PyObject *kwargs)
+minefield_trampoline(PyObject *self, PyObject *args, PyObject *kwargs)
 {
 #ifdef WITH_GREENLET
     PyObject *current = NULL, *parent = NULL, *res = NULL;
@@ -2328,7 +2328,7 @@ meinheld_trampoline(PyObject *self, PyObject *args, PyObject *kwargs)
 
 
 static PyObject*
-meinheld_spawn(PyObject *self, PyObject *args, PyObject *kwargs)
+minefield_spawn(PyObject *self, PyObject *args, PyObject *kwargs)
 {
 #ifdef WITH_GREENLET
     PyObject *greenlet = NULL, *res = NULL;
@@ -2357,7 +2357,7 @@ meinheld_spawn(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyObject*
-meinheld_sleep(PyObject *self, PyObject *args, PyObject *kwargs)
+minefield_sleep(PyObject *self, PyObject *args, PyObject *kwargs)
 {
 #ifdef WITH_GREENLET
     PyObject *current = NULL, *parent = NULL, *res = NULL;
@@ -2389,7 +2389,7 @@ meinheld_sleep(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyObject *
-meinheld_get_ident(PyObject *self, PyObject *args)
+minefield_get_ident(PyObject *self, PyObject *args)
 {
 #ifdef WITH_GREENLET
     return greenlet_getcurrent();
@@ -2433,7 +2433,7 @@ internal_schedule_call(int seconds, PyObject *cb, PyObject *args, PyObject *kwar
 }
 
 static PyObject*
-meinheld_schedule_call(PyObject *self, PyObject *args, PyObject *kwargs)
+minefield_schedule_call(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     long seconds = 0, ret;
     Py_ssize_t size;
@@ -2482,45 +2482,45 @@ meinheld_schedule_call(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 static PyMethodDef ServerMethods[] = {
-    {"listen", (PyCFunction)meinheld_listen, METH_VARARGS|METH_KEYWORDS, "set host and port num"},
-    {"set_access_logger", meinheld_access_log, METH_VARARGS, "set access logger function."},
-    {"set_error_logger", meinheld_error_log, METH_VARARGS, "set error logger function."},
+    {"listen", (PyCFunction)minefield_listen, METH_VARARGS|METH_KEYWORDS, "set host and port num"},
+    {"set_access_logger", minefield_access_log, METH_VARARGS, "set access logger function."},
+    {"set_error_logger", minefield_error_log, METH_VARARGS, "set error logger function."},
 
-    {"set_keepalive", meinheld_set_keepalive, METH_VARARGS, "set keep-alive support. value set timeout sec. default 0. (disable keep-alive)"},
-    {"get_keepalive", meinheld_get_keepalive, METH_VARARGS, "return keep-alive support."},
+    {"set_keepalive", minefield_set_keepalive, METH_VARARGS, "set keep-alive support. value set timeout sec. default 0. (disable keep-alive)"},
+    {"get_keepalive", minefield_get_keepalive, METH_VARARGS, "return keep-alive support."},
 
-    {"set_max_content_length", meinheld_set_max_content_length, METH_VARARGS, "set max_content_length"},
-    {"get_max_content_length", meinheld_get_max_content_length, METH_VARARGS, "return max_content_length"},
+    {"set_max_content_length", minefield_set_max_content_length, METH_VARARGS, "set max_content_length"},
+    {"get_max_content_length", minefield_get_max_content_length, METH_VARARGS, "return max_content_length"},
 
-    {"set_client_body_buffer_size", meinheld_set_client_body_buffer_size, METH_VARARGS, "set client_body_buffer_size"},
-    {"get_client_body_buffer_size", meinheld_get_client_body_buffer_size, METH_VARARGS, "return client_body_buffer_size"},
+    {"set_client_body_buffer_size", minefield_set_client_body_buffer_size, METH_VARARGS, "set client_body_buffer_size"},
+    {"get_client_body_buffer_size", minefield_get_client_body_buffer_size, METH_VARARGS, "return client_body_buffer_size"},
 
-    {"set_backlog", meinheld_set_backlog, METH_VARARGS, "set backlog size"},
-    {"get_backlog", meinheld_get_backlog, METH_VARARGS, "return backlog size"},
+    {"set_backlog", minefield_set_backlog, METH_VARARGS, "set backlog size"},
+    {"get_backlog", minefield_get_backlog, METH_VARARGS, "return backlog size"},
 
-    {"set_picoev_max_fd", meinheld_set_picoev_max_fd, METH_VARARGS, "set picoev max fd size"},
-    {"get_picoev_max_fd", meinheld_get_picoev_max_fd, METH_VARARGS, "return picoev max fd size"},
+    {"set_picoev_max_fd", minefield_set_picoev_max_fd, METH_VARARGS, "set picoev max fd size"},
+    {"get_picoev_max_fd", minefield_get_picoev_max_fd, METH_VARARGS, "return picoev max fd size"},
 
-    /* {"set_process_name", meinheld_set_process_name, METH_VARARGS, "set process name"}, */
-    {"stop", (PyCFunction)meinheld_stop, METH_VARARGS|METH_KEYWORDS, "stop main loop"},
-    {"shutdown", (PyCFunction)meinheld_stop, METH_VARARGS|METH_KEYWORDS, "stop main loop "},
+    /* {"set_process_name", minefield_set_process_name, METH_VARARGS, "set process name"}, */
+    {"stop", (PyCFunction)minefield_stop, METH_VARARGS|METH_KEYWORDS, "stop main loop"},
+    {"shutdown", (PyCFunction)minefield_stop, METH_VARARGS|METH_KEYWORDS, "stop main loop "},
 
-    {"schedule_call", (PyCFunction)meinheld_schedule_call, METH_VARARGS|METH_KEYWORDS, ""},
-    {"spawn", (PyCFunction)meinheld_spawn, METH_VARARGS|METH_KEYWORDS, ""},
-    {"sleep", (PyCFunction)meinheld_sleep, METH_VARARGS|METH_KEYWORDS, ""},
+    {"schedule_call", (PyCFunction)minefield_schedule_call, METH_VARARGS|METH_KEYWORDS, ""},
+    {"spawn", (PyCFunction)minefield_spawn, METH_VARARGS|METH_KEYWORDS, ""},
+    {"sleep", (PyCFunction)minefield_sleep, METH_VARARGS|METH_KEYWORDS, ""},
 
     // support gunicorn
-    {"set_listen_socket", meinheld_set_listen_socket, METH_VARARGS, "set listen_sock"},
-    {"set_watchdog", meinheld_set_watchdog, METH_VARARGS, "set watchdog"},
-    {"set_fastwatchdog", meinheld_set_fastwatchdog, METH_VARARGS, "set watchdog"},
-    {"run", (PyCFunction)meinheld_run_loop, METH_VARARGS|METH_KEYWORDS, "set wsgi app, run the main loop"},
+    {"set_listen_socket", minefield_set_listen_socket, METH_VARARGS, "set listen_sock"},
+    {"set_watchdog", minefield_set_watchdog, METH_VARARGS, "set watchdog"},
+    {"set_fastwatchdog", minefield_set_fastwatchdog, METH_VARARGS, "set watchdog"},
+    {"run", (PyCFunction)minefield_run_loop, METH_VARARGS|METH_KEYWORDS, "set wsgi app, run the main loop"},
     // greenlet and continuation
-    {"_suspend_client", meinheld_suspend_client, METH_VARARGS, "resume client"},
-    {"_resume_client", meinheld_resume_client, METH_VARARGS, "resume client"},
+    {"_suspend_client", minefield_suspend_client, METH_VARARGS, "resume client"},
+    {"_resume_client", minefield_resume_client, METH_VARARGS, "resume client"},
     // io
-    {"cancel_wait", meinheld_cancel_wait, METH_VARARGS, "cancel wait"},
-    {"trampoline", (PyCFunction)meinheld_trampoline, METH_VARARGS | METH_KEYWORDS, "trampoline"},
-    {"get_ident", meinheld_get_ident, METH_VARARGS, "return thread ident id"},
+    {"cancel_wait", minefield_cancel_wait, METH_VARARGS, "cancel wait"},
+    {"trampoline", (PyCFunction)minefield_trampoline, METH_VARARGS | METH_KEYWORDS, "trampoline"},
+    {"get_ident", minefield_get_ident, METH_VARARGS, "return thread ident id"},
 
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
@@ -2575,7 +2575,7 @@ initserver(void)
         INITERROR;
     }
 
-    timeout_error = PyErr_NewException("meinheld.server.timeout",
+    timeout_error = PyErr_NewException("minefield.server.timeout",
                       PyExc_IOError, NULL);
     if (timeout_error == NULL) {
         INITERROR;

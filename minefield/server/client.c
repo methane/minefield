@@ -179,7 +179,7 @@ PyTypeObject ClientObjectType = {
     PyObject_HEAD_INIT(NULL)
     0,                    /* ob_size */
 #endif
-    "meinheld.client",             /*tp_name*/
+    "minefield.client",             /*tp_name*/
     sizeof(ClientObject), /*tp_basicsize*/
     0,                         /*tp_itemsize*/
     (destructor)ClientObject_dealloc, /*tp_dealloc*/

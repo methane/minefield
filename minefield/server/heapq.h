@@ -1,7 +1,7 @@
 #ifndef HEAPQ_H
 #define HEAPQ_H
 
-#include "meinheld.h"
+#include "minefield.h"
 #include "timer.h"
 
 typedef struct {

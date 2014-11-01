@@ -1,7 +1,7 @@
 #ifndef TIMER_H
 #define TIMER_H
 
-#include "meinheld.h"
+#include "minefield.h"
 
 typedef struct {
     PyObject_HEAD

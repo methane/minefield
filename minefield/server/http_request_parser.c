@@ -919,7 +919,7 @@ setup_static_env(char *name, int port)
     path_info_key = NATIVE_FROMSTRING("PATH_INFO");
     query_string_key = NATIVE_FROMSTRING("QUERY_STRING");
     request_method_key = NATIVE_FROMSTRING("REQUEST_METHOD");
-    client_key = NATIVE_FROMSTRING("meinheld.client");
+    client_key = NATIVE_FROMSTRING("minefield.client");
 
     content_type_key = NATIVE_FROMSTRING("CONTENT_TYPE");
     content_length_key = NATIVE_FROMSTRING("CONTENT_LENGTH");

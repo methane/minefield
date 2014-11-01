@@ -1,7 +1,7 @@
 #ifndef RESPONSE_H
 #define RESPONSE_H
 
-#include "meinheld.h"
+#include "minefield.h"
 
 #include "client.h"
 #include "time_cache.h"

@@ -1,7 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "meinheld.h"
+#include "minefield.h"
 #include "client.h"
 
 int setup_listen_sock(int fd);

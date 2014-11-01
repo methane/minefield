@@ -265,7 +265,7 @@ PyTypeObject InputObjectType = {
     PyObject_HEAD_INIT(NULL)
     0,                    /* ob_size */
 #endif
-    "meinheld.input",             /*tp_name*/
+    "minefield.input",             /*tp_name*/
     sizeof(InputObject), /*tp_basicsize*/
     0,                         /*tp_itemsize*/
     (destructor)InputObject_dealloc, /*tp_dealloc*/

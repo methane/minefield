@@ -1,5 +1,5 @@
-#ifndef MEINHELD_H
-#define MEINHELD_H
+#ifndef minefield_H
+#define minefield_H
 
 #include <Python.h>
 #include <structmember.h>
@@ -31,8 +31,8 @@
 
 #include "http_parser.h"
 
-#define SERVER "meinheld/0.5.6"
-#define MODULE_NAME "meinheld.server"
+#define SERVER "minefield/0.5.6"
+#define MODULE_NAME "minefield.server"
 
 #ifdef DEVELOP
 #define DEBUG(...) \

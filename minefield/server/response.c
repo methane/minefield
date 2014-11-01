@@ -1,7 +1,7 @@
 #include "response.h"
 #include "log.h"
 #include "util.h"
-#include "meinheld.h"
+#include "minefield.h"
 
 #define CRLF "\r\n"
 #define DELIM ": "
@@ -1308,7 +1308,7 @@ PyTypeObject ResponseObjectType = {
     PyObject_HEAD_INIT(NULL)
     0,                    /* ob_size */
 #endif
-    "meinheld.start_response",             /*tp_name*/
+    "minefield.start_response",             /*tp_name*/
     sizeof(ResponseObject), /*tp_basicsize*/
     0,                         /*tp_itemsize*/
     (destructor)ResponseObject_dealloc, /*tp_dealloc*/
@@ -1354,7 +1354,7 @@ PyTypeObject FileWrapperType = {
     PyObject_HEAD_INIT(NULL)
     0,                    /* ob_size */
 #endif
-    "meinheld.file_wrapper",             /*tp_name*/
+    "minefield.file_wrapper",             /*tp_name*/
     sizeof(FileWrapperObject), /*tp_basicsize*/
     0,                         /*tp_itemsize*/
     (destructor)FileWrapperObject_dealloc, /*tp_dealloc*/
