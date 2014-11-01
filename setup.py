@@ -1,8 +1,4 @@
-
-try:
-    from setuptools import Extension, setup
-except ImportError:
-    from distutils.core import Extension, setup
+from setuptools import Extension, setup
 
 import os
 import sys
@@ -11,13 +7,9 @@ import platform
 import fnmatch
 
 develop = False
-if os.environ.get("MEINHELD_DEVELOP") == "1":
+if os.environ.get("MINEFIELD_DEVELOP") == "1":
     develop = True
 # develop = True 
-
-nogreen = False
-if os.environ.get("MEINHELD_NOGREEN") == "1":
-    nogreen = True
 
 
 def read(name):
@@ -29,8 +21,6 @@ def check_platform():
         print("Be posix compliant is mandatory")
         sys.exit(1)
 
-def check_pypy():
-    return "PyPy" in sys.version
 
 def get_picoev_file():
     poller_file = None
@@ -58,31 +48,22 @@ def get_sources(path, ignore_files):
     return src
 
 check_platform()
-pypy = check_pypy()
-if pypy:
-    nogreen = True
 
-if nogreen:
-    define_macros=[
-            ("HTTP_PARSER_DEBUG", "0") ]
-    install_requires=[]
-else:
-    define_macros=[
-            ("WITH_GREENLET",None),
-            ("HTTP_PARSER_DEBUG", "0") ]
-    install_requires=['greenlet>=0.4.0,<0.4.5']
+define_macros=[
+        ("HTTP_PARSER_DEBUG", "0") ]
+install_requires=[]
 
 if develop:
     define_macros.append(("DEVELOP",None))
 
-sources = get_sources("meinheld", ["*picoev_*"])
+sources = get_sources("minefield", ["*picoev_*"])
 sources.append(get_picoev_file())
 
 library_dirs=[]
 #TODO set python include dirs
 include_dirs=[]
 
-setup(name='meinheld',
+setup(name='minefield',
     version="0.5.6",
     description="High performance asynchronous Python WSGI Web Server",
     long_description=read('README.rst'),
@@ -97,15 +78,13 @@ setup(name='meinheld',
     entry_points="""
 
     [gunicorn.workers]
-    gunicorn_worker=meinheld.gmeinheld:MeinheldWorker
+    gunicorn_worker=minefield.gminefield:MinefieldWorker
     """,
     ext_modules = [
-        Extension('meinheld.server',
+        Extension('minefield.server',
             sources=sources,
             include_dirs=include_dirs,
             library_dirs=library_dirs,
-            # libraries=["profiler"],
-            # extra_compile_args=[""],
             define_macros=define_macros
         )],
 
@@ -120,6 +99,8 @@ setup(name='meinheld',
         'Programming Language :: C',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
         'Topic :: Internet :: WWW/HTTP :: WSGI :: Server'
     ],
 )
