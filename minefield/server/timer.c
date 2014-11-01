@@ -1,5 +1,4 @@
 #include "timer.h"
-#include "greensupport.h"
 #include "time_cache.h"
 
 int
@@ -9,7 +8,7 @@ is_active_timer(TimerObject *timer)
 }
 
 TimerObject*
-TimerObject_new(long seconds, PyObject *callback, PyObject *args, PyObject *kwargs, PyObject *greenlet)
+TimerObject_new(long seconds, PyObject *callback, PyObject *args, PyObject *kwargs)
 {
     TimerObject *self;
     PyObject *temp = NULL;
@@ -31,7 +30,6 @@ TimerObject_new(long seconds, PyObject *callback, PyObject *args, PyObject *kwar
     Py_XINCREF(callback);
     Py_XINCREF(args);
     Py_XINCREF(kwargs);
-    Py_XINCREF(greenlet);
 
     self->callback = callback;
     if(args != NULL){
@@ -42,7 +40,6 @@ TimerObject_new(long seconds, PyObject *callback, PyObject *args, PyObject *kwar
     }
     self->kwargs = kwargs;
     self->called = 0;
-    self->greenlet = greenlet;
     PyObject_GC_Track(self);
     GDEBUG("self:%p", self);
     return self;
@@ -55,16 +52,8 @@ fire_timer(TimerObject *timer)
 
     if(!timer->called){
         timer->called = 1;
-        if (timer->greenlet) {
-            DEBUG("call have greenlet timer:%p", timer);
-            res = greenlet_switch(timer->greenlet, timer->args, timer->kwargs);
-            if (greenlet_dead(timer->greenlet)) {
-                Py_DECREF(timer->greenlet);
-            }
-        } else {
-            DEBUG("call timer:%p", timer);
-            res = PyEval_CallObjectWithKeywords(timer->callback, timer->args, timer->kwargs);
-        }
+        DEBUG("call timer:%p", timer);
+        res = PyEval_CallObjectWithKeywords(timer->callback, timer->args, timer->kwargs);
         Py_XDECREF(res);
         DEBUG("called timer %p", timer);
     }
@@ -77,7 +66,6 @@ TimerObject_clear(TimerObject *self)
     Py_CLEAR(self->args);
     Py_CLEAR(self->kwargs);
     Py_CLEAR(self->callback);
-    Py_CLEAR(self->greenlet);
     return 0;
 }
 
@@ -88,7 +76,6 @@ TimerObject_traverse(TimerObject *self, visitproc visit, void *arg)
     Py_VISIT(self->args);
     Py_VISIT(self->kwargs);
     Py_VISIT(self->callback);
-    Py_VISIT(self->greenlet);
     return 0;
 }
 

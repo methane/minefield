@@ -253,10 +253,6 @@ static struct PyMethodDef InputObject_methods[] = {
   {NULL,    NULL}
 };
 
-static PyGetSetDef file_getsetlist[] = {
-    {0},
-};
-
 
 PyTypeObject InputObjectType = {
 #ifdef PY3

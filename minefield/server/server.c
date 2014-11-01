@@ -20,10 +20,6 @@
 #include "timer.h"
 #include "heapq.h"
 
-#ifdef WITH_GREENLET
-#include "greensupport.h"
-#endif
-
 #define ACCEPT_TIMEOUT_SECS 1
 #define READ_TIMEOUT_SECS 30
 
@@ -68,8 +64,6 @@ static char *unix_sock_name = NULL;
 static int backlog = 1024 * 4; // backlog size
 static int max_fd = 1024 * 4;  // picoev max_fd
 
-// greenlet hub switch value
-static PyObject *hub_switch_value;
 PyObject* current_client;
 PyObject* timeout_error;
 
@@ -98,19 +92,14 @@ static int client_numfree = 0;
 static void
 read_callback(picoev_loop* loop, int fd, int events, void* cb_arg);
 
-#ifndef WITH_GREENLET
 static void
 write_callback(picoev_loop* loop, int fd, int events, void* cb_arg);
-#endif
 
 static void
 kill_callback(picoev_loop* loop, int fd, int events, void* cb_arg);
 
-static void
-trampoline_callback(picoev_loop* loop, int fd, int events, void* cb_arg);
-
 static PyObject*
-internal_schedule_call(int seconds, PyObject *cb, PyObject *args, PyObject *kwargs, PyObject *greenlet);
+internal_schedule_call(int seconds, PyObject *cb, PyObject *args, PyObject *kwargs);
 
 static int
 prepare_call_wsgi(client_t *client);
@@ -516,7 +505,7 @@ static PyObject *
 app_handler(PyObject *self, PyObject *args)
 {
     int ret, active;
-    PyObject *wsgi_args = NULL, *start = NULL, *current = NULL, *parent = NULL, *res = NULL;
+    PyObject *wsgi_args = NULL, *start = NULL, *res = NULL;
     PyObject *env = NULL;
     ClientObject *pyclient;
     client_t *client;
@@ -561,38 +550,6 @@ app_handler(PyObject *self, PyObject *args)
     }
     status = response_start(client);
 
-#ifdef WITH_GREENLET
-    while(status != STATUS_OK) {
-        if (status == STATUS_ERROR) {
-            // Internal Server Error
-            req->bad_request_code = 500;
-            goto error;
-        } else {
-            active = picoev_is_active(main_loop, client->fd);
-            ret = picoev_add(main_loop, client->fd, PICOEV_WRITE, 300, trampoline_callback, (void *)pyclient);
-            if ((ret == 0 && !active)) {
-                activecnt++;
-            }
-
-            // switch to hub
-            current = pyclient->greenlet;
-            parent = greenlet_getparent(current);
-        
-            /* Py_INCREF(hub_switch_value); */
-            res = greenlet_switch(parent, hub_switch_value, NULL);
-            Py_XDECREF(res);
-
-            // try again after event switch
-            status = process_body(client);
-        }
-    }
-    status = close_response(client);
-    if (status == STATUS_ERROR) {
-        //TODO logging error
-    }
-    // send OK
-    close_client(client);
-#else
     switch(status) {
         case STATUS_ERROR:
             // Internal Server Error
@@ -610,7 +567,6 @@ app_handler(PyObject *self, PyObject *args)
             // send OK
             close_client(client);
     }
-#endif
     Py_RETURN_NONE;
 
 error:
@@ -638,185 +594,22 @@ get_app_handler(void)
     return app_handler_func;
 }
 
-#ifdef WITH_GREENLET
-static void
-resume_greenlet(PyObject *greenlet)
-{
-    PyObject *res = NULL;
-    PyObject *err_type, *err_val, *err_tb;
-
-    if (PyErr_Occurred()) {
-        PyErr_Fetch(&err_type, &err_val, &err_tb);
-        PyErr_Clear();
-        //set error
-        res = greenlet_throw(greenlet, err_type, err_val, err_tb);
-    } else {
-        /* Py_INCREF(hub_switch_value); */
-        res = greenlet_switch(greenlet, hub_switch_value, NULL);
-        if (res == NULL) {
-            call_error_logger();
-            /* PyErr_Fetch(&err_type, &err_val, &err_tb); */
-            /* PyErr_Clear(); */
-            //set error
-            /* res = greenlet_throw(greenlet, err_type, err_val, err_tb); */
-        }
-    }
-    Py_XDECREF(res);
-    if (greenlet_dead(greenlet)) {
-        Py_DECREF(greenlet);
-    }
-}
-
-static void
-resume_wsgi_handler(ClientObject *pyclient)
-{
-    PyObject *res = NULL;
-    PyObject *err_type, *err_val, *err_tb;
-    client_t *old_client;
-    client_t *client = pyclient->client;
-
-    //swap bind client_t
-
-    old_client = start_response->cli;
-    start_response->cli = client;
-
-    current_client = (PyObject *)pyclient;
-    if (PyErr_Occurred()) {
-        PyErr_Fetch(&err_type, &err_val, &err_tb);
-        PyErr_Clear();
-        //set error
-        res = greenlet_throw(pyclient->greenlet, err_type, err_val, err_tb);
-    } else {
-        res = greenlet_switch(pyclient->greenlet, pyclient->args, pyclient->kwargs);
-    }
-    start_response->cli = old_client;
-
-    Py_CLEAR(pyclient->args);
-    Py_CLEAR(pyclient->kwargs);
-    Py_XDECREF(res);
-}
-#endif
-
 static void
 call_wsgi_handler(client_t *client)
 {
-    PyObject *handler, *greenlet, *args, *res;
-    ClientObject *pyclient;
+    PyObject *handler, *args, *res;
     request *req = NULL;
 
     handler = get_app_handler();
     req = client->current_req;
     current_client = PyDict_GetItem(req->environ, client_key);
-    pyclient = (ClientObject *)current_client;
 
     args = PyTuple_Pack(1, req->environ);
-#ifdef WITH_GREENLET
-    //new greenlet
-    greenlet = greenlet_new(handler, NULL);
-    Py_DECREF(greenlet_getparent(greenlet));
-    // set_greenlet
-    pyclient->greenlet = greenlet;
-    Py_INCREF(pyclient->greenlet);
-
-    res = greenlet_switch(greenlet, args, NULL);
-    //res = PyObject_CallObject(wsgi_app, args);
-    Py_DECREF(args);
-    Py_DECREF(greenlet);
-#else
-    pyclient->greenlet = NULL;
     res = PyObject_CallObject(handler, args);
     Py_DECREF(args);
-#endif
     Py_XDECREF(res);
 }
 
-
-#ifdef WITH_GREENLET
-static void
-timeout_error_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
-{
-    ClientObject *pyclient = (ClientObject *)(cb_arg);
-    client_t *client = pyclient->client;
-
-    if ((events & PICOEV_TIMEOUT) != 0) {
-        DEBUG("timeout_error_callback pyclient:%p client:%p fd:%d", pyclient, pyclient->client, pyclient->client->fd);
-        if (!picoev_del(loop, fd)) {
-            activecnt--;
-            DEBUG("activecnt:%d", activecnt);
-        }
-        pyclient->suspended = 0;
-        /* pyclient->resumed = 1; */
-        PyErr_SetString(timeout_error, "timeout");
-        set_so_keepalive(client->fd, 0);
-        resume_wsgi_handler(pyclient);
-    }
-}
-
-static void
-timeout_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
-{
-    ClientObject *pyclient = (ClientObject *)(cb_arg);
-    client_t *client = pyclient->client;
-
-    if ((events & PICOEV_TIMEOUT) != 0) {
-        DEBUG("timeout_callback pyclient:%p client:%p fd:%d", pyclient, pyclient->client, pyclient->client->fd);
-        //next intval 30sec
-        picoev_set_timeout(loop, client->fd, 30);
-        // is_active ??
-        if (write(client->fd, "", 0) < 0) {
-            if (!picoev_del(loop, fd)) {
-                activecnt--;
-                DEBUG("activecnt:%d", activecnt);
-            }
-            //resume
-            pyclient->suspended = 0;
-            /* pyclient->resumed = 1; */
-            PyErr_SetFromErrno(PyExc_IOError);
-            DEBUG("closed");
-            set_so_keepalive(client->fd, 0);
-            resume_wsgi_handler(pyclient);
-        }
-    }
-}
-
-
-static void
-trampoline_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
-{
-    PyObject *o = NULL;
-    ClientObject *pyclient = NULL;
-    client_t *client = NULL;
-
-
-    if (!picoev_del(loop, fd)) {
-        activecnt--;
-        DEBUG("activecnt:%d", activecnt);
-    }
-    
-    YDEBUG("call trampoline_callback fd:%d event:%d cb_arg:%p", fd, events, cb_arg);
-    o = (PyObject*)cb_arg;
-
-    if (CheckClientObject(o)) {
-        pyclient = (ClientObject*)cb_arg;
-        client = pyclient->client;
-        
-        if ((events & PICOEV_TIMEOUT) != 0) {
-
-            RDEBUG("** trampoline_callback timeout **");
-            //timeout
-            client->keep_alive = 0;
-            PyErr_SetString(timeout_error, "timeout");
-        }
-        YDEBUG("resume_wsgi_handler");
-        resume_wsgi_handler(pyclient);
-    } else if (greenlet_check(o)) {
-        YDEBUG("resume_greenlet");
-        resume_greenlet(o);
-    }
-}
-#endif
-
-#ifndef WITH_GREENLET
 static void
 write_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
 {
@@ -842,7 +635,6 @@ write_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
         }
     }
 }
-#endif
 
 static int
 check_http_expect(client_t *client)
@@ -2080,332 +1872,15 @@ minefield_set_process_name(PyObject *self, PyObject *args)
     Py_RETURN_NONE;
 }*/
 
-PyObject *
-minefield_suspend_client(PyObject *self, PyObject *args)
-{
-
-#ifdef WITH_GREENLET
-    PyObject *temp = NULL, *parent = NULL, *res = NULL;
-    ClientObject *pyclient;
-    client_t *client;
-    int timeout = 0, ret = 0, active = 0;
-
-    if (!PyArg_ParseTuple(args, "O|i:_suspend_client", &temp, &timeout)) {
-        return NULL;
-    }
-    if (timeout < 0) {
-        PyErr_SetString(PyExc_ValueError, "timeout value out of range ");
-        return NULL;
-    }
-
-    // check client object
-    if (!CheckClientObject(temp)) {
-        PyErr_SetString(PyExc_TypeError, "must be a client object");
-        return NULL;
-    }
-
-    pyclient = (ClientObject *)temp;
-    client = pyclient->client;
-
-    if (!pyclient->greenlet) {
-        PyErr_SetString(PyExc_ValueError, "greenlet is not set");
-        return NULL;
-    }
-    
-    /*
-    if (pyclient->resumed == 1) {
-        //call later
-        PyErr_SetString(PyExc_IOError, "not called resume");
-        return NULL;
-    }
-    */
-
-    if (client && !(pyclient->suspended)) {
-        pyclient->suspended = 1;
-        parent = greenlet_getparent(pyclient->greenlet);
-
-        set_so_keepalive(client->fd, 1);
-        BDEBUG("minefield_suspend_client pyclient:%p client:%p fd:%d", pyclient, client, client->fd);
-        BDEBUG("minefield_suspend_client active ? %d", picoev_is_active(main_loop, client->fd));
-        active = picoev_is_active(main_loop, client->fd);
-        if (timeout > 0) {
-            ret = picoev_add(main_loop, client->fd, PICOEV_TIMEOUT, timeout, timeout_error_callback, (void *)pyclient);
-        } else {
-            ret = picoev_add(main_loop, client->fd, PICOEV_TIMEOUT, 3, timeout_callback, (void *)pyclient);
-        }
-        if ((ret == 0 && !active)) {
-            activecnt++;
-        }
-        /* Py_INCREF(hub_switch_value); */
-        res = greenlet_switch(parent, hub_switch_value, NULL);
-        return res;
-    } else {
-        PyErr_SetString(PyExc_IOError, "already suspended");
-        return NULL;
-    }
-    Py_RETURN_NONE;
-#else
-    NO_GREENLET_ERROR;
-#endif
-}
-
-PyObject *
-minefield_resume_client(PyObject *self, PyObject *args)
-{
-#ifdef WITH_GREENLET
-    PyObject *temp, *switch_args, *switch_kwargs;
-    ClientObject *pyclient;
-    client_t *client;
-    int ret, active;
-
-    if (!PyArg_ParseTuple(args, "O|OO:_resume_client", &temp, &switch_args, &switch_kwargs)) {
-        return NULL;
-    }
-
-    // check client object
-    if (!CheckClientObject(temp)) {
-        PyErr_SetString(PyExc_TypeError, "must be a client object");
-        return NULL;
-    }
-
-    pyclient = (ClientObject *)temp;
-    client = pyclient->client;
-
-    if (!pyclient->greenlet) {
-        PyErr_SetString(PyExc_ValueError, "greenlet is not set");
-        return NULL;
-    }
-
-    if (!pyclient->suspended) {
-        // not suspend
-        PyErr_SetString(PyExc_IOError, "not suspended or dead ");
-        return NULL;
-    }
-
-    if (pyclient->client && pyclient->suspended) {
-        set_so_keepalive(pyclient->client->fd, 0);
-        pyclient->args = switch_args;
-        Py_XINCREF(pyclient->args);
-
-        pyclient->kwargs = switch_kwargs;
-        Py_XINCREF(pyclient->kwargs);
-
-        pyclient->suspended = 0;
-        /* pyclient->resumed = 1; */
-        DEBUG("minefield_resume_client pyclient:%p client:%p fd:%d", pyclient, pyclient->client, pyclient->client->fd);
-        DEBUG("minefield_resume_client active ? %d", picoev_is_active(main_loop, pyclient->client->fd));
-        //clear event
-        active = picoev_is_active(main_loop, client->fd);
-        ret = picoev_add(main_loop, client->fd, PICOEV_WRITE, 0, trampoline_callback, (void *)pyclient);
-        if ((ret == 0 && !active)) {
-            activecnt++;
-        }
-    } else {
-        PyErr_SetString(PyExc_IOError, "already resumed");
-        return NULL;
-    }
-    Py_RETURN_NONE;
-#else
-    NO_GREENLET_ERROR;
-#endif
-}
-
-PyObject *
-minefield_cancel_wait(PyObject *self, PyObject *args)
-{
-#ifdef WITH_GREENLET
-    int fd;
-    if (!PyArg_ParseTuple(args, "i:cancel_event", &fd)) {
-        return NULL;
-    }
-
-    if (fd < 0) {
-        PyErr_SetString(PyExc_ValueError, "fileno value out of range ");
-        return NULL;
-    }
-    if (picoev_is_active(main_loop, fd)) {
-        if (!picoev_del(main_loop, fd)) {
-            activecnt--;
-            DEBUG("activecnt:%d", activecnt);
-        }
-    }
-    Py_RETURN_NONE;
-#else
-    NO_GREENLET_ERROR;
-#endif
-}
-
 
 static PyObject*
-minefield_trampoline(PyObject *self, PyObject *args, PyObject *kwargs)
-{
-#ifdef WITH_GREENLET
-    PyObject *current = NULL, *parent = NULL, *res = NULL;
-    ClientObject *pyclient;
-    int fd, event, timeout = 0, ret, active;
-    PyObject *read = Py_None, *write = Py_None;
-
-    static char *keywords[] = {"fileno", "read", "write", "timeout", NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i|OOi:trampoline", keywords, &fd, &read, &write, &timeout)) {
-        return NULL;
-    }
-
-    if (fd < 0) {
-        PyErr_SetString(PyExc_ValueError, "fileno value out of range ");
-        return NULL;
-    }
-
-    if (timeout < 0) {
-        PyErr_SetString(PyExc_ValueError, "timeout value out of range ");
-        return NULL;
-    }
-
-    if (PyObject_IsTrue(read) && PyObject_IsTrue(write)) {
-        event = PICOEV_READWRITE;
-    } else if (PyObject_IsTrue(read)) {
-        event = PICOEV_READ;
-    } else if (PyObject_IsTrue(write)) {
-        event = PICOEV_WRITE;
-    } else {
-        event = PICOEV_TIMEOUT;
-        if (timeout <= 0) {
-            PyErr_SetString(PyExc_ValueError, "timeout value out of range ");
-            return NULL;
-        }
-    }
-    
-    /*
-    if (current_client == NULL) {
-        //TODO Cheange Exception class and Messages
-        PyErr_SetString(PyExc_ValueError, "server not running ");
-        //PyErr_SetString(PyExc_ValueError, " WSGI Handler");
-        return NULL;
-    }*/
-   
-    current = greenlet_getcurrent();
-    pyclient = (ClientObject *) current_client;
-    Py_DECREF(current);
-    if (pyclient != NULL && pyclient->greenlet == current) {
-        active = picoev_is_active(main_loop, fd);
-        ret = picoev_add(main_loop, fd, event, timeout, trampoline_callback, (void *)pyclient);
-        if ((ret == 0 && !active)) {
-            activecnt++;
-        }
-        DEBUG("call from wsgi app");
-
-        // switch to hub
-        current = pyclient->greenlet;
-        parent = greenlet_getparent(current);
-        YDEBUG("trampoline fd:%d event:%d current:%p parent:%p cb_arg:%p", fd, event, current, parent, pyclient);
-        
-        /* Py_INCREF(hub_switch_value); */
-        res = greenlet_switch(parent, hub_switch_value, NULL);
-        return res;
-    } else {
-        DEBUG("call from greenlet");
-        parent = greenlet_getparent(current);
-        if (parent == NULL) {
-            PyErr_SetString(PyExc_IOError, "call from same greenlet");
-            return NULL;
-        }
-
-        active = picoev_is_active(main_loop, fd);
-        ret = picoev_add(main_loop, fd, event, timeout, trampoline_callback, current);
-        if ((ret == 0 && !active)) {
-            activecnt++;
-        }
-        YDEBUG("trampoline fd:%d event:%d current:%p parent:%p cb_arg:%p", fd, event, current, parent, current);
-        /* Py_INCREF(hub_switch_value); */
-        res = greenlet_switch(parent, hub_switch_value, NULL);
-        return res;
-    }
-#else
-    NO_GREENLET_ERROR;
-#endif
-
-}
-
-
-static PyObject*
-minefield_spawn(PyObject *self, PyObject *args, PyObject *kwargs)
-{
-#ifdef WITH_GREENLET
-    PyObject *greenlet = NULL, *res = NULL;
-    PyObject *func = NULL, *func_args = NULL, *func_kwargs = NULL;
-
-    static char *keywords[] = {"func", "args", "kwargs", NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OO:spawn", keywords, &func, &func_args, &func_kwargs)) {
-        return NULL;
-    }
-
-    //new greenlet
-    greenlet = greenlet_new(func, NULL);
-    if (greenlet == NULL) {
-        return NULL;
-    }
-    Py_DECREF(greenlet_getparent(greenlet));
-    res = internal_schedule_call(0, func, func_args, func_kwargs, greenlet);
-    Py_XDECREF(res);
-    DEBUG("greenlet refcnt:%d", (int)Py_REFCNT(greenlet));
-    Py_RETURN_NONE;
-
-#else
-    NO_GREENLET_ERROR;
-#endif
-}
-
-static PyObject*
-minefield_sleep(PyObject *self, PyObject *args, PyObject *kwargs)
-{
-#ifdef WITH_GREENLET
-    PyObject *current = NULL, *parent = NULL, *res = NULL;
-    int sec = 0;
-    static char *keywords[] = {"seconds", NULL};
-
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "i:sleep", keywords, &sec)) {
-        return NULL;
-    }
-    
-    current = greenlet_getcurrent();
-    parent = greenlet_getparent(current);
-    Py_DECREF(current);
-    if (parent == NULL) {
-        PyErr_SetString(PyExc_IOError, "call from same greenlet");
-        return NULL;
-    }
-    DEBUG("sleep sec:%d", sec);
-    res = internal_schedule_call(sec, NULL, NULL, NULL, current);
-    Py_XDECREF(res);
-    res = greenlet_switch(parent, hub_switch_value, NULL);
-    Py_XDECREF(res);
-
-    Py_RETURN_NONE;
-
-#else
-    NO_GREENLET_ERROR;
-#endif
-}
-
-PyObject *
-minefield_get_ident(PyObject *self, PyObject *args)
-{
-#ifdef WITH_GREENLET
-    return greenlet_getcurrent();
-#else
-    NO_GREENLET_ERROR;
-#endif
-}
-
-static PyObject*
-internal_schedule_call(int seconds, PyObject *cb, PyObject *args, PyObject *kwargs, PyObject *greenlet)
+internal_schedule_call(int seconds, PyObject *cb, PyObject *args, PyObject *kwargs)
 {
     TimerObject* timer;
     heapq_t *timers = g_timers;
     pending_queue_t *pendings = g_pendings;
 
-    timer = TimerObject_new(seconds, cb, args, kwargs, greenlet);
+    timer = TimerObject_new(seconds, cb, args, kwargs);
     if (timer == NULL) {
         return NULL;
     }
@@ -2427,7 +1902,6 @@ internal_schedule_call(int seconds, PyObject *cb, PyObject *args, PyObject *kwar
             return NULL;
         }
     }
-        
     activecnt++;
     return (PyObject*)timer;
 }
@@ -2476,7 +1950,7 @@ minefield_schedule_call(PyObject *self, PyObject *args, PyObject *kwargs)
         cbargs = PyTuple_GetSlice(args, 2, size);
     }
 
-    timer = internal_schedule_call(seconds, cb, cbargs, kwargs, NULL);
+    timer = internal_schedule_call(seconds, cb, cbargs, kwargs);
     Py_XDECREF(cbargs);
     return timer;
 }
@@ -2506,21 +1980,12 @@ static PyMethodDef ServerMethods[] = {
     {"shutdown", (PyCFunction)minefield_stop, METH_VARARGS|METH_KEYWORDS, "stop main loop "},
 
     {"schedule_call", (PyCFunction)minefield_schedule_call, METH_VARARGS|METH_KEYWORDS, ""},
-    {"spawn", (PyCFunction)minefield_spawn, METH_VARARGS|METH_KEYWORDS, ""},
-    {"sleep", (PyCFunction)minefield_sleep, METH_VARARGS|METH_KEYWORDS, ""},
 
     // support gunicorn
     {"set_listen_socket", minefield_set_listen_socket, METH_VARARGS, "set listen_sock"},
     {"set_watchdog", minefield_set_watchdog, METH_VARARGS, "set watchdog"},
     {"set_fastwatchdog", minefield_set_fastwatchdog, METH_VARARGS, "set watchdog"},
     {"run", (PyCFunction)minefield_run_loop, METH_VARARGS|METH_KEYWORDS, "set wsgi app, run the main loop"},
-    // greenlet and continuation
-    {"_suspend_client", minefield_suspend_client, METH_VARARGS, "resume client"},
-    {"_resume_client", minefield_resume_client, METH_VARARGS, "resume client"},
-    // io
-    {"cancel_wait", minefield_cancel_wait, METH_VARARGS, "cancel wait"},
-    {"trampoline", (PyCFunction)minefield_trampoline, METH_VARARGS | METH_KEYWORDS, "trampoline"},
-    {"get_ident", minefield_get_ident, METH_VARARGS, "return thread ident id"},
 
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
@@ -2595,13 +2060,7 @@ initserver(void)
         INITERROR;
     }
 
-#ifdef WITH_GREENLET
-    hub_switch_value = PyTuple_New(0);
-#endif
-
 #ifdef PY3
     return m;
 #endif
 }
-
-

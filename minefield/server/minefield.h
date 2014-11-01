@@ -86,9 +86,6 @@
 # define unlikely(x) (x)
 #endif
 
-#define NO_GREENLET_ERROR \
-    PyErr_SetString(PyExc_NotImplementedError, "greenlet not support"); \
-    return NULL;\
 
 //#if (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 2) || PY_MAJOR_VERSION > 3
 #if PY_MAJOR_VERSION >= 3
