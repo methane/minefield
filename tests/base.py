@@ -1,6 +1,4 @@
-from meinheld import server
-from meinheld import patch
-patch.patch_all()
+from minefield import server
 import time
 import requests
 
@@ -23,7 +21,6 @@ def start_server(app, middleware=None):
 
 
 class ServerRunner(object):
-
 
     def __init__(self, app, middleware=None):
         self.app = app

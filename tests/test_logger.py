@@ -47,7 +47,7 @@ def test_access_log():
     def client():
         return requests.get("http://localhost:8000/foo/bar")
 
-    from meinheld import server
+    from minefield import server
 
     env, res = run_client(client, App)
     assert(res.content == ASSERT_RESPONSE)
@@ -59,7 +59,7 @@ def test_err_log():
         return requests.get("http://localhost:8000/foo/bar")
 
 
-    from meinheld import server
+    from minefield import server
 
     env, res = run_client(client, ErrApp)
     assert(res.status_code == 500)
@@ -69,7 +69,7 @@ def test_custom_access_log():
     def client():
         return requests.get("http://localhost:8000/foo/bar")
 
-    from meinheld import server
+    from minefield import server
     logger = TestLogger()
     server.set_access_logger(logger)
 
@@ -83,7 +83,7 @@ def test_custom_err_log():
         return requests.get("http://localhost:8000/foo/bar")
 
 
-    from meinheld import server
+    from minefield import server
     logger = TestLogger()
     server.set_error_logger(logger)
 

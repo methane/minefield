@@ -120,4 +120,3 @@ def test_many():
     server.schedule_call(1, _schedule_call)
     server.run(App())
 
-
