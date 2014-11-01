@@ -27,9 +27,7 @@ def get_picoev_file():
 
     if "Linux" == platform.system():
         poller_file = 'minefield/server/picoev_epoll.c'
-    elif "Darwin" == platform.system():
-        poller_file = 'minefield/server/picoev_kqueue.c'
-    elif "FreeBSD" == platform.system():
+    elif platform.system() in ('Darwin', 'FreeBSD'):
         poller_file = 'minefield/server/picoev_kqueue.c'
     else:
         print("Sorry, not support .")
@@ -54,18 +52,15 @@ define_macros=[
 install_requires=[]
 
 if develop:
-    define_macros.append(("DEVELOP",None))
+    define_macros.append(("DEVELOP", None))
 
 sources = get_sources("minefield", ["*picoev_*"])
 sources.append(get_picoev_file())
 
-library_dirs=[]
-#TODO set python include dirs
-include_dirs=[]
 
 setup(name='minefield',
-    version="0.5.6",
-    description="High performance asynchronous Python WSGI Web Server",
+    version="0.1",
+    description="High performance Python WSGI Web Server",
     long_description=read('README.rst'),
     author='INADA Naoki',
     author_email='songofacandy@gmail.com',
@@ -75,15 +70,14 @@ setup(name='minefield',
     install_requires=install_requires,
 
     entry_points="""
-
     [gunicorn.workers]
     gunicorn_worker=minefield.gminefield:MinefieldWorker
     """,
     ext_modules = [
         Extension('minefield.server',
             sources=sources,
-            include_dirs=include_dirs,
-            library_dirs=library_dirs,
+            include_dirs=[],
+            library_dirs=[],
             define_macros=define_macros
         )],
 
