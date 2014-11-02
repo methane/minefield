@@ -1,11 +1,12 @@
 import os
 import sys
-from meinheld import server
-from meinheld.mlogging import _access, _error
+from minefield import server
+from minefield.mlogging import _access, _error
 from gunicorn.workers.base import Worker
 from gunicorn.glogging import Logger
 
-class MeinheldWorker(Worker):
+
+class MinefieldWorker(Worker):
 
     def __init__(self, *args, **kwargs):
         Worker.__init__(self, *args, **kwargs)
@@ -38,7 +39,7 @@ class MeinheldWorker(Worker):
         
         server.set_fastwatchdog(self.tmp.fileno(), self.ppid, int(self.timeout))
         #server.set_watchdog(self.watchdog)
-        
+
         server.set_listen_socket(fds)
         server.run(self.wsgi)
 
@@ -48,4 +49,3 @@ class MeinheldWorker(Worker):
     def handle_exit(self, sig, frame):
         server.stop()
         sys.exit(0)
-
