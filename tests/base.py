@@ -16,7 +16,7 @@ class ClientRunner(object):
 
         def run_client():
             while not self.started:
-                time.sleep(0.01)
+                time.sleep(0.1)
             try:
                 self.result = client()
             except Exception as e:
@@ -30,10 +30,11 @@ class ClientRunner(object):
 
         server.listen(("0.0.0.0", 8000))
         def check():
-            if self._stop:
+            if self.stop:
                 #print('shutdown')
                 server.shutdown()
         server.set_watchdog(check)
+        self.started = True
         if self.middleware:
             server.run(self.middleware(self.app))
         else:
