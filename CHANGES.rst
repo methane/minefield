@@ -1,3 +1,11 @@
+0.6
+====
+(First release of Minefield)
+
+* Stop using greenlet.
+* Don't send error response for keepalive timeout.
+
+
 0.5.6
 =======
 (Bug Release, Release 2014-03-26)

@@ -59,7 +59,7 @@ sources.append(get_picoev_file())
 
 
 setup(name='minefield',
-    version="0.1",
+    version="0.6",
     description="High performance Python WSGI Web Server",
     long_description=read('README.rst'),
     author='INADA Naoki',
@@ -91,6 +91,8 @@ setup(name='minefield',
         'Operating System :: POSIX :: BSD :: FreeBSD',
         'Programming Language :: C',
         'Programming Language :: Python',
+        'Programming Language :: Python :: 2',
+        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
