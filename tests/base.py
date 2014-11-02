@@ -30,11 +30,11 @@ class ClientRunner(object):
 
         server.listen(("0.0.0.0", 8000))
         def check():
+            self.started = True
             if self.stop:
                 #print('shutdown')
                 server.shutdown()
         server.set_watchdog(check)
-        self.started = True
         if self.middleware:
             server.run(self.middleware(self.app))
         else:
