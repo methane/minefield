@@ -1,4 +1,14 @@
 language: python
+python:
+    - "2.7"
+    - "3.3"
+    - "3.4"
+
+env: PYTHONFAULTHANDLER=1 PYTHONUNBUFFERED=1 MINEFIELD_DEVELOP=1
+
 install:
-    - pip install tox
-script: tox
+    - "pip install -U pytest requests"
+    - "pip install ."
+script:
+    - "py.test --version"
+    - "py.test -s tests"
