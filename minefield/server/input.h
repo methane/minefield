@@ -3,7 +3,6 @@
 
 #include "minefield.h"
 #include "buffer.h"
-#include "http_parser.h"
 #include "client.h"
 
 typedef struct {
