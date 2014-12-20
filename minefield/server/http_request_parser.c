@@ -3,6 +3,7 @@
 #include "response.h"
 #include "input.h"
 #include "util.h"
+#include "picohttpparser/picohttpparser.h"
 
 #define MAXFREELIST 1024
 
@@ -87,8 +88,6 @@ static PyObject *client_key;
 
 static PyObject *content_type_key;
 static PyObject *content_length_key;
-static PyObject *h_content_type_key;
-static PyObject *h_content_length_key;
 
 static PyObject *server_protocol_val10;
 static PyObject *server_protocol_val11;
@@ -113,57 +112,6 @@ static PyObject *http_method_report;
 static PyObject *http_method_mkactivity;
 static PyObject *http_method_checkout;
 static PyObject *http_method_merge;
-
-static http_parser *http_parser_free_list[MAXFREELIST];
-static int numfree = 0;
-
-void
-parser_list_fill(void)
-{
-    http_parser *p;
-
-    while (numfree < MAXFREELIST) {
-        p = (http_parser*)PyMem_Malloc(sizeof(http_parser));
-        http_parser_free_list[numfree++] = p;
-    }
-}
-
-void
-parser_list_clear(void)
-{
-    http_parser *p;
-
-    while (numfree) {
-        p = http_parser_free_list[--numfree];
-        PyMem_Free(p);
-    }
-}
-
-static http_parser*
-alloc_parser(void)
-{
-    http_parser *p;
-    if (numfree) {
-        p = http_parser_free_list[--numfree];
-        GDEBUG("use pooled %p", p);
-    }else{
-        p = (http_parser*)PyMem_Malloc(sizeof(http_parser));
-        GDEBUG("alloc %p", p);
-    }
-    memset(p, 0, sizeof(http_parser));
-    return p;
-}
-
-void
-dealloc_parser(http_parser *p)
-{
-    if (numfree < MAXFREELIST){
-        http_parser_free_list[numfree++] = p;
-        GDEBUG("back to pool %p", p);
-    }else{
-        PyMem_Free(p);
-    }
-}
 
 PyObject*
 new_environ(client_t *client)
@@ -224,46 +172,6 @@ urldecode(char *buf, int len)
     *t = 0;
     return t - s0;
 }
-
-static PyObject*
-concat_string(PyObject *o, const char *buf, size_t len)
-{
-    PyObject *ret;
-    size_t l;
-    char *dest, *origin;
-    
-    l = PyBytes_GET_SIZE(o);
-
-    ret = PyBytes_FromStringAndSize((char*)0, l + len);
-    if(ret == NULL){
-        return ret;
-    }
-    dest = PyBytes_AS_STRING(ret);
-    origin = PyBytes_AS_STRING(o);
-    memcpy(dest, origin , l);
-    memcpy(dest + l, buf , len);
-    Py_DECREF(o);
-    return ret;
-}
-
-static int
-replace_env_key(PyObject* dict, PyObject* old_key, PyObject* new_key)
-{
-    int ret = 1;
-
-    PyObject* value = PyDict_GetItem(dict, old_key);
-    if(value) {
-        Py_INCREF(value);
-        ret = PyDict_DelItem(dict, old_key);
-        if(ret == -1){
-            return ret;
-        }
-        ret = PyDict_SetItem(dict, new_key, value);
-        Py_DECREF(value);
-    }
-    return ret;
-}
-
 
 static int
 set_query(PyObject *env, char *buf, int len)
@@ -348,25 +256,19 @@ set_path(PyObject *env, char *buf, int len)
     slen = t - s0;
     slen = urldecode(s0, slen);
 
-    obj = PyBytes_FromStringAndSize(s0, slen);
-    /* DEBUG("path:%.*s", (int)slen, PyBytes_AS_STRING(obj)); */
-
-    if(likely(obj != NULL)){
-#ifdef PY3
-        //TODO CHECK ERROR 
-        char *c2 = PyBytes_AS_STRING(obj);
-        PyObject *v = PyUnicode_DecodeUTF8(c2, strlen(c2), NULL);
-        PyDict_SetItem(env, path_info_key, v);
-        Py_DECREF(v);
+#if PY3
+    obj = PyUnicode_DecodeUTF8(s0, slen);
 #else
-        PyDict_SetItem(env, path_info_key, obj);
+    obj = PyBytes_FromStringAndSize(s0, slen);
 #endif
+    /* DEBUG("path:%.*s", (int)slen, PyBytes_AS_STRING(obj)); */
+    if(likely(obj != NULL)){
+        PyDict_SetItem(env, path_info_key, obj);
         Py_DECREF(obj);
         return slen;
     }else{
         return -1;
     }
-
 }
 
 static PyObject*
@@ -374,54 +276,59 @@ get_http_header_key(const char *s, int len)
 {
     PyObject *obj;
     char *dest;
-    char c;
 
+#if PY3
+    obj = PyUnicode_New(len + prefix_len, 127);
+    if (unlikely(obj == NULL)) return NULL;
+    dest = (char*)PyUnicode_1BYTE_DATA();
+#else
     obj = PyBytes_FromStringAndSize(NULL, len + prefix_len);
+    if (unlikely(obj == NULL)) return NULL;
     dest = (char*)PyBytes_AS_STRING(obj);
+#endif
 
     *dest++ = 'H';
     *dest++ = 'T';
     *dest++ = 'T';
     *dest++ = 'P';
     *dest++ = '_';
-
-    while(len--) {
-        c = *s++;
-        if(c == '-'){
-            *dest++ = '_';
-        }else if(c >= 'a' && c <= 'z'){
-            *dest++ = c - ('a'-'A');
-        }else{
-            *dest++ = c;
-        }
-    }
-
+    memcpy(dest, s, len);
     return obj;
 }
 
-static void
-key_upper(char *s, const char *key, size_t len)
+static int64_t
+get_content_length(const char *s, size_t len)
 {
-    int i = 0;
-    int c;
-    for (i = 0; i < len; i++) {
-        c = key[i];
-        if(c == '-'){
-            s[i] = '_';
-        }else{
-            if(islower(c)){
-                s[i] = toupper(c);
-            }else{
-                s[i] = c;
-            }
-        }
+    int64_t clen = 0;
+    while (len--) {
+        char c = *s++;
+        if (c < '0' || c > '9') return -1;
+        clen = clen * 10 + (c - '0');
     }
+    return clen;
+}
+
+static int
+key_upper(char *s, size_t len)
+{
+    while (len) {
+        char c = *s;
+        if (unlikely(c < 0x21 || c > 0x7E)) { // VCHAR in RFC5234
+            return 400;
+        } else if (c == '-') {
+            *s = '_';
+        } else if (c >= 'a' && c <= 'z') {
+            *s = c - ('a' - 'A');
+        }
+        s++;
+        len--;
+    }
+    return 0;
 }
 
 static int
 write_body2file(request *req, const char *buffer, size_t buffer_len)
 {
-
     FILE *tmp = (FILE *)req->body;
     fwrite(buffer, 1, buffer_len, tmp);
     req->body_readed += buffer_len;
@@ -444,175 +351,41 @@ write_body2mem(request *req, const char *buf, size_t buf_len)
 static int
 write_body(request *req, const char *buffer, size_t buffer_len)
 {
-
-    if(req->body_type == BODY_TYPE_TMPFILE){
+    if (req->body_type == BODY_TYPE_TMPFILE) {
         return write_body2file(req, buffer, buffer_len);
-    }else{
+    } else {
         return write_body2mem(req, buffer, buffer_len);
     }
 }
 
-static client_t *
-get_client(http_parser *p)
-{
-    return (client_t *)p->data;
-}
-
-static request *
-get_current_request(http_parser *p)
-{
-    client_t *client =  (client_t *)p->data;
-    return client->current_req;
-}
-
 static int
-message_begin_cb(http_parser *p)
+message_begin_cb(client_t *client)
 {
     request *req = NULL;
     PyObject *environ = NULL;
-    client_t *client = get_client(p);
 
     DEBUG("message_begin_cb");
 
     req = new_request();
-    if(req == NULL){
-        return -1;
-    }
+    if (req == NULL) return -1;
+
     req->start_msec = current_msec;
-    client->current_req = req;
+    client->reading_req = req;
     environ = new_environ(client);
-    client->complete = 0;
     /* client->bad_request_code = 0; */
     /* client->body_type = BODY_TYPE_NONE; */
     /* client->body_readed = 0; */
     /* client->body_length = 0; */
     req->environ = environ;
-    push_request(client->request_queue, client->current_req);
-    return 0;
-}
-
-
-static int
-header_field_cb(http_parser *p, const char *buf, size_t len)
-{
-    request *req = get_current_request(p);
-    PyObject *env = NULL, *obj = NULL;
-#ifdef PY3
-    char *c1, *c2;
-    PyObject *f, *v;
-#endif
-    /* DEBUG("field key:%.*s", (int)len, buf); */
-
-    if(req->last_header_element != FIELD){
-        env = req->environ;
-        if(LIMIT_REQUEST_FIELDS <= req->num_headers){
-            req->bad_request_code = 400;
-            return -1;
-        }
-#ifdef PY3
-        //TODO CHECK ERROR 
-        c1 = PyBytes_AS_STRING(req->field);
-        f = PyUnicode_DecodeLatin1(c1, strlen(c1), NULL);
-        c2 = PyBytes_AS_STRING(req->value);
-        v = PyUnicode_DecodeLatin1(c2, strlen(c2), NULL);
-        PyDict_SetItem(env, f, v);
-        Py_DECREF(f);
-        Py_DECREF(v);
-#else
-        PyDict_SetItem(env, req->field, req->value);
-#endif
-        Py_DECREF(req->field);
-        Py_DECREF(req->value);
-        req->field = NULL;
-        req->value = NULL;
-        req->num_headers++;
-    }
-
-    if(likely(req->field == NULL)){
-        obj = get_http_header_key(buf, len);
-    }else{
-        char temp[len];
-        key_upper(temp, buf, len);
-        obj = concat_string(req->field, temp, len);
-    }
-
-    if(unlikely(obj == NULL)){
-        req->bad_request_code = 500;
-        return -1;
-    }
-    if(unlikely(PyBytes_GET_SIZE(obj) > LIMIT_REQUEST_FIELD_SIZE)){
-        req->bad_request_code = 400;
-        return -1;
-    }
-
-    req->field = obj;
-    req->last_header_element = FIELD;
     return 0;
 }
 
 static int
-header_value_cb(http_parser *p, const char *buf, size_t len)
+body_cb(request *req, const char *buf, size_t len)
 {
-    request *req = get_current_request(p);
-    PyObject *obj;
-
-    /* DEBUG("field value:%.*s", (int)len, buf); */
-    if(likely(req->value== NULL)){
-        obj = PyBytes_FromStringAndSize(buf, len);
-    }else{
-        obj = concat_string(req->value, buf, len);
-    }
-
-    if(unlikely(obj == NULL)){
-        req->bad_request_code = 500;
-        return -1; 
-    }
-    if(unlikely(PyBytes_GET_SIZE(obj) > LIMIT_REQUEST_FIELD_SIZE)){
-        req->bad_request_code = 400;
-        return -1;
-    }
-
-    req->value = obj;
-    req->last_header_element = VALUE;
-    return 0;
-}
-
-static int
-url_cb(http_parser *p, const char *buf, size_t len)
-{
-    request *req = get_current_request(p);
-    buffer_result ret = MEMORY_ERROR;
-
-    if(unlikely(req->path)){
-        ret = write2buf(req->path, buf, len);
-    }else{
-        req->path = new_buffer(1024, LIMIT_PATH);
-        ret = write2buf(req->path, buf, len);
-    }
-    switch(ret){
-        case MEMORY_ERROR:
-            req->bad_request_code = 500;
-            return -1;
-        case LIMIT_OVER:
-            req->bad_request_code = 400;
-            return -1;
-        default:
-            break;
-    }
-
-
-    return 0;
-}
-
-
-static int
-body_cb(http_parser *p, const char *buf, size_t len)
-{
-    request *req = get_current_request(p);
     DEBUG("body_cb");
 
     if(max_content_length < req->body_readed + len){
-
         DEBUG("set request code %d", 413);
         req->bad_request_code = 413;
         return -1;
@@ -630,7 +403,6 @@ body_cb(http_parser *p, const char *buf, size_t len)
                 req->bad_request_code = 500;
                 return -1;
             }
-
             req->body = tmp;
             req->body_type = BODY_TYPE_TMPFILE;
             DEBUG("BODY_TYPE_TMPFILE");
@@ -646,233 +418,286 @@ body_cb(http_parser *p, const char *buf, size_t len)
     return 0;
 }
 
-int
-headers_complete_cb(http_parser *p)
+static int
+parse_header(client_t *client, size_t len)
 {
     PyObject *obj;
-    int ret;
-    uint64_t content_length = 0;
+    int ret, nread, n;
+    int should_keep_alive;
+    int has_content_length = 0;
+    int content_length = 0;
 
-    client_t *client = get_client(p);
-    request *req = client->current_req;
+    const char *method;
+    size_t method_len;
+    const char *path;
+    size_t path_len;
+    int minor_version;
+    struct phr_header headers[64];
+    size_t num_headers=64;
+
+    request *req = client->reading_req;
     PyObject *env = req->environ;
-    
-    DEBUG("should keep alive %d", http_should_keep_alive(p));
-    client->keep_alive = http_should_keep_alive(p);
 
-    if(p->content_length != ULLONG_MAX){
-        content_length = p->content_length;
-        if(max_content_length < content_length){
-            RDEBUG("max_content_length over %d/%d", (int)content_length, (int)max_content_length);
-            DEBUG("set request code %d", 413);
-            req->bad_request_code = 413;
+    nread = phr_parse_request(client->read_buff, len, &method, &method_len,
+                              &path, &path_len, &minor_version,
+                              headers, &num_headers, client->read_len);
+    if (nread < 0) return nread;
+
+    should_keep_alive = minor_version == 1 ? 1 : 0;
+    client->http_minor = minor_version;
+
+    for (n=0; n<num_headers; n++) {
+        PyObject *field, *value;
+        int ret = key_upper((char*)headers[n].name, headers[n].name_len);
+        if (ret != 0) {
+            req->bad_request_code = ret;
+            return -1;
+        }
+
+        if (headers[n].name_len == 12 && strncmp(headers[n].name, "CONTENT_TYPE", 12) == 0) {
+            field = content_type_key;
+            Py_INCREF(field);
+        } else if (headers[n].name_len == 14 && strncmp(headers[n].name, "CONTENT_LENGTH", 14) == 0) {
+            content_length = get_content_length(headers[n].value, headers[n].value_len);
+            if (content_length < 0) {
+                req->bad_request_code = 400;
+                return -1;
+            }
+            has_content_length = 1;
+            field = content_length_key;
+            Py_INCREF(field);
+        } else {
+            if (headers[n].name_len == 10 && strncmp(headers[n].name, "CONNECTION", 10) == 0) {
+                if (headers[n].value_len == 10 && strncasecmp(headers[n].value, "keep-alive", 10) == 0) {
+                    should_keep_alive = 1;
+                } else if (headers[n].value_len == 5 && strncasecmp(headers[n].value, "close", 5) == 0) {
+                    should_keep_alive = 0;
+                } else {
+                    req->bad_request_code = 400;
+                    return -1;
+                }
+            }
+            field = get_http_header_key(headers[n].name, headers[n].name_len);
+            if (unlikely(field == NULL)) {
+                req->bad_request_code = 500;
+                return -1;
+            }
+        }
+#if PY3
+        value = PyUnicode_DecodeLatin1(headers[n].value, headers[n].value_len);
+#else
+        value = PyBytes_FromStringAndSize(headers[n].value, headers[n].value_len);
+#endif
+        if (unlikely(value == NULL)) {
+            Py_DECREF(field);
+            req->bad_request_code = 500;
+            return -1;
+        }
+        ret = PyDict_SetItem(env, field, value);
+        Py_CLEAR(field);
+        Py_CLEAR(value);
+        if (unlikely(ret != 0)) {
+            RDEBUG("failed to PyDict_SetItem()");
+            req->bad_request_code = 500;
             return -1;
         }
     }
 
-    if(p->http_major == 1 && p->http_minor == 1){
+    //if (!has_content_length) {
+    //    // Content Length Required.
+    //    req->bad_request_code = 411;
+    //    return -1;
+    //}
+    if (content_length > max_content_length) {
+        RDEBUG("max_content_length over %d/%d", (int)content_length, (int)max_content_length);
+        DEBUG("set request code %d", 413);
+        req->bad_request_code = 413;
+        return -1;
+    }
+
+    DEBUG("should keep alive %d", should_keep_alive);
+    client->keep_alive = should_keep_alive;
+
+    if (minor_version == 1) {
         obj = server_protocol_val11;
-    }else{
+    } else {
         obj = server_protocol_val10;
     }
-
     ret = PyDict_SetItem(env, server_protocol_key, obj);
-    if(unlikely(ret == -1)){
+    if (unlikely(ret == -1))
         return -1;
-    }
 
-    if(likely(req->path)){
-        ret = set_path(env, req->path->buf, req->path->len);
-        free_buffer(req->path);
-        if(unlikely(ret == -1)){
-           //TODO Error 
-           return -1;
-        }
-    }else{
-        ret = PyDict_SetItem(env, path_info_key, empty_string);
-        if(ret == -1){
-            return -1;
-        }
-    }
-    req->path = NULL;
-
-    //Last header
-    if(likely(req->field && req->value)){
-
-#ifdef PY3
-        //TODO CHECK ERROR 
-        char *c1 = PyBytes_AS_STRING(req->field);
-        PyObject *f = PyUnicode_DecodeLatin1(c1, strlen(c1), NULL);
-        char *c2 = PyBytes_AS_STRING(req->value);
-        PyObject *v = PyUnicode_DecodeLatin1(c2, strlen(c2), NULL);
-        PyDict_SetItem(env, f, v);
-        Py_DECREF(f);
-        Py_DECREF(v);
-#else
-        PyDict_SetItem(env, req->field, req->value);
-#endif
-        Py_DECREF(req->field);
-        Py_DECREF(req->value);
-        req->field = NULL;
-        req->value = NULL;
-        if(unlikely(ret == -1)){
-            return -1;
-        }
-    }
-    ret = replace_env_key(env, h_content_type_key, content_type_key);
+    ret = set_path(env, (char*)path, path_len);
     if(unlikely(ret == -1)){
-        return -1;
-    }
-    ret = replace_env_key(env, h_content_length_key, content_length_key);
-    if(unlikely(ret == -1)){
-        return -1;
+       //TODO Error 
+       return -1;
     }
 
-    switch(p->method){
-        case HTTP_DELETE:
-            obj = http_method_delete;
-            break;
-        case HTTP_GET:
+    key_upper((char*)method, method_len);
+    obj = NULL;
+    switch (method_len) {
+    case 3:
+        if (0 ==      strncmp(method, "GET", 3))
             obj = http_method_get;
-            break;
-        case HTTP_HEAD:
-            obj = http_method_head;
-            break;
-        case HTTP_POST:
-            obj = http_method_post;
-            break;
-        case HTTP_PUT:
+        else if (0 == strncmp(method, "PUT", 3))
             obj = http_method_put;
-            break;
-        case HTTP_PATCH:
-            obj = http_method_patch;
-            break;
-        case HTTP_CONNECT:
-            obj = http_method_connect;
-            break;
-        case HTTP_OPTIONS:
-            obj = http_method_options;
-            break;
-        case  HTTP_TRACE:
-            obj = http_method_trace;
-            break;
-        case HTTP_COPY:
+        break;
+    case 4:
+        if (0 ==      strncmp(method, "HEAD", 4))
+            obj = http_method_head;
+        else if (0 == strncmp(method, "POST", 4))
+            obj = http_method_post;
+        else if (0 == strncmp(method, "COPY", 4))
             obj = http_method_copy;
-            break;
-        case HTTP_LOCK:
+        else if (0 == strncmp(method, "LOCK", 4))
             obj = http_method_lock;
-            break;
-        case HTTP_MKCOL:
-            obj = http_method_mkcol;
-            break;
-        case HTTP_MOVE:
+        else if (0 == strncmp(method, "MOVE", 4))
             obj = http_method_move;
-            break;
-        case HTTP_PROPFIND:
-            obj = http_method_propfind;
-            break;
-        case HTTP_PROPPATCH:
-            obj = http_method_proppatch;
-            break;
-        case HTTP_UNLOCK:
-            obj = http_method_unlock;
-            break;
-        case HTTP_REPORT:
-            obj = http_method_report;
-            break;
-        case HTTP_MKACTIVITY:
-            obj = http_method_mkactivity;
-            break;
-        case HTTP_CHECKOUT:
-            obj = http_method_checkout;
-            break;
-        case HTTP_MERGE:
+    case 5:
+        if (0 ==      strncmp(method, "PATCH", 5))
+            obj = http_method_patch;
+        else if (0 == strncmp(method, "TRACE", 5))
+            obj = http_method_trace;
+        else if (0 == strncmp(method, "MKCOL", 5))
+            obj = http_method_mkcol;
+        else if (0 == strncmp(method, "MERGE", 5))
             obj = http_method_merge;
-            break;
-        default:
-            obj = http_method_get;
-            break;
+    case 6:
+        if (0 ==      strncmp(method, "DELETE", 6))
+            obj = http_method_delete;
+        else if (0 == strncmp(method, "UNLOCK", 6))
+            obj = http_method_unlock;
+        else if (0 == strncmp(method, "REPORT", 6))
+            obj = http_method_report;
+    case 7:
+        if (0 ==      strncmp(method, "CONNECT", 7))
+            obj = http_method_connect;
+        else if (0 == strncmp(method, "OPTIONS", 7))
+            obj = http_method_options;
+    case 8:
+        if (0 ==      strncmp(method, "PROPFIND", 8))
+            obj = http_method_propfind;
+        else if (0 == strncmp(method, "CHECKOUT", 8))
+            obj = http_method_checkout;
+    case 9:
+        if (0 == strncmp(method, "PROPPATCH", 9))
+            obj = http_method_proppatch;
+    case 10:
+        if (0 == strncmp(method, "MKACTIVITY", 10))
+            obj = http_method_mkactivity;
     }
-
-    ret = PyDict_SetItem(env, request_method_key, obj);
+    if (unlikely(obj == NULL)) {
+#if PY3
+        obj = PyUnicode_FromStringAndSize(method, method_len);
+#else
+        obj = PyBytes_FromStringAndSize(method, method_len);
+#endif
+        ret = PyDict_SetItem(env, request_method_key, obj);
+        Py_DECREF(obj);
+    } else {
+        ret = PyDict_SetItem(env, request_method_key, obj);
+    }
+    obj = NULL;
     if(unlikely(ret == -1)){
         return -1;
     }
     req->body_length = content_length;
-    /* client->current_req = NULL; */
 
     //keep client data
     obj = ClientObject_New(client);
-    if(unlikely(obj == NULL)){
+    if (unlikely(obj == NULL)){
         return -1;
     }
     ret = PyDict_SetItem(env, client_key, obj);
     Py_DECREF(obj);
-    if(unlikely(ret == -1)){
-        return -1;
-    }
-
-    DEBUG("fin headers_complete_cb");
-    return 0;
+    if (unlikely(ret < 0)) return ret;
+    return nread;
 }
 
-int
-message_complete_cb(http_parser *p)
+static int
+message_complete(client_t *client)
 {
-    client_t *client = get_client(p);
-    DEBUG("message_complete_cb");
-    client->complete = 1;
-    client->upgrade = p->upgrade;
-
-    /* request *req = client->request_queue->tail; */
-    /* req->body = client->body; */
-    /* req->body_type = client->body_type; */
-
+    DEBUG("message_complete");
+    client->complete++;
+    push_request(client->request_queue, client->reading_req);
+    client->reading_req = NULL;
     return 0;
 }
-
-static http_parser_settings settings =
-  {.on_message_begin = message_begin_cb
-  ,.on_header_field = header_field_cb
-  ,.on_header_value = header_value_cb
-  ,.on_url = url_cb
-  ,.on_body = body_cb
-  ,.on_headers_complete = headers_complete_cb
-  ,.on_message_complete = message_complete_cb
-  };
-
 
 static PyMethodDef method = {"file_wrapper", (PyCFunction)file_wrapper, METH_VARARGS, 0};
 
 int
 init_parser(client_t *cli, const char *name, const short port)
 {
-
-    cli->http_parser = alloc_parser();
-    /* cli->http_parser = (http_parser*)PyMem_Malloc(sizeof(http_parser)); */
-    if(cli->http_parser == NULL){
-        return -1;
-    }
-    /* memset(cli->http_parser, 0, sizeof(http_parser)); */
-    http_parser_init(cli->http_parser, HTTP_REQUEST);
-    cli->http_parser->data = cli;
-
+    cli->keep_alive = 0;
+    cli->read_len = 0;
+    cli->complete = 0;
     return 0;
 }
 
-size_t
-execute_parse(client_t *cli, const char *data, size_t len)
-{
-    cli->complete = 0;
-    return http_parser_execute(cli->http_parser, &settings, data, len);
-}
-
-
+/** Parse request.
+ *
+ * @return -1 on error, -2 on incomplete and 0 for complete.
+ */
 int
-parser_finish(client_t *cli)
+execute_parse(client_t *cli, int len)
 {
-    return cli->complete;
+    int ret = 0;
+    char *buf = 0;
+    int remain;
+retry:
+    buf = cli->read_buff;
+    request *request = cli->reading_req;
+
+    if (request == NULL) {
+        // First parse for this request. Prepare request object.
+        ret = message_begin_cb(cli);
+        if (ret < 0)
+            return ret;
+        request = cli->reading_req;
+        cli->read_header_complete = 0;
+    }
+
+    if (!cli->read_header_complete) {
+        ret = parse_header(cli, cli->read_len + len);
+        cli->read_len += len;  // Used next try when ret == INCOMPLETE
+        if (ret < 0)
+            return ret;
+
+        cli->read_header_complete = 1;
+        buf = cli->read_buff + ret;
+        len = cli->read_len - ret;
+    }
+
+    remain = request->body_length - (len + request->body_readed);
+    if (remain < 0) {
+        // Next request is pipelined.
+        len += remain;
+    }
+    if (request->body_length > 0) {
+        ret = body_cb(request, buf, len);
+        if (ret < 0) {
+            return ret;
+        }
+        request->body_readed += len;
+        if (remain > 0) {
+            return -2; // incomplete
+        }
+    }
+    message_complete(cli);
+
+    if (remain < 0) {
+        DEBUG("request pipelined. remains %d, offs %d, len %d", -remain, buf-cli->read_buff, len);
+        //TODO: prepare to next request.
+        memmove(cli->read_buff, buf+len, -remain);
+        cli->read_len = 0;
+        len = -remain;
+        DEBUG("%.*s", len, cli->read_buff);
+        goto retry;
+    }
+    return 0;
 }
+
 
 void
 setup_static_env(char *name, int port)
@@ -923,9 +748,6 @@ setup_static_env(char *name, int port)
 
     content_type_key = NATIVE_FROMSTRING("CONTENT_TYPE");
     content_length_key = NATIVE_FROMSTRING("CONTENT_LENGTH");
-
-    h_content_type_key = NATIVE_FROMSTRING("HTTP_CONTENT_TYPE");
-    h_content_length_key = NATIVE_FROMSTRING("HTTP_CONTENT_LENGTH");
 
     server_protocol_val10 = NATIVE_FROMSTRING("HTTP/1.0");
     server_protocol_val11 = NATIVE_FROMSTRING("HTTP/1.1");
@@ -992,8 +814,6 @@ clear_static_env(void)
 
     Py_DECREF(content_type_key);
     Py_DECREF(content_length_key);
-    Py_DECREF(h_content_type_key);
-    Py_DECREF(h_content_length_key);
 
     Py_DECREF(server_protocol_val10);
     Py_DECREF(server_protocol_val11);
@@ -1018,6 +838,4 @@ clear_static_env(void)
     Py_DECREF(http_method_mkactivity);
     Py_DECREF(http_method_checkout);
     Py_DECREF(http_method_merge);
-
 }
-

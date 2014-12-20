@@ -25,10 +25,6 @@ typedef enum {
 } field_type;
 
 typedef struct {
-    buffer_t *path;
-    uint32_t num_headers;
-    field_type last_header_element;
-
     PyObject *environ;
     void *next;
     int body_length;
@@ -36,11 +32,8 @@ typedef struct {
     int bad_request_code;
     void *body;
     request_body_type body_type;
-    
-    PyObject *field;
-    PyObject *value;
-    uintptr_t start_msec;
 
+    uintptr_t start_msec;
 } request;
 
 typedef struct {

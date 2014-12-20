@@ -207,7 +207,7 @@ new_client_t(int client_fd, char *remote_addr, uint32_t remote_port)
     //memset(client, 0, sizeof(client_t));
 
     client->fd = client_fd;
-    client->complete = 1;
+    client->complete = 0;
     client->request_queue = new_request_queue();
     client->remote_addr = remote_addr;
     client->remote_port = remote_port;
@@ -341,11 +341,6 @@ close_client(client_t *client)
             }
         }
         return ;
-    }
-
-    if (client->http_parser != NULL) {
-        /* PyMem_Free(client->http_parser); */
-        dealloc_parser(client->http_parser);
     }
 
     free_request_queue(client->request_queue);
@@ -592,7 +587,7 @@ check_http_expect(client_t *client)
     int ret;
     request *req = client->current_req;
 
-    if (client->http_parser->http_minor == 1) {
+    if (client->http_minor == 1) {
         ///TODO CHECK
         c = PyDict_GetItemString(req->environ, "HTTP_EXPECT");
         if (c) {
@@ -743,7 +738,6 @@ prepare_call_wsgi(client_t *client)
     request *req = NULL;
 
     set_current_request(client);
-    
     req = client->current_req;
 
     //check Expect
@@ -760,7 +754,7 @@ prepare_call_wsgi(client_t *client)
             return -1;
         }
     }
-    
+
     if (!is_keep_alive) {
         client->keep_alive = 0;
     }
@@ -779,10 +773,9 @@ set_read_error(client_t *client, int status_code)
     if (client->request_queue->size > 0) {
         //piplining
         set_bad_request_code(client, status_code);
-        //finish = 1
         return 1;
     } else {
-        if (!client->complete) {
+        if (client->reading_req) {
             // read error while reading request.
             client->status_code = status_code;
             send_error_page(client);
@@ -801,100 +794,91 @@ read_timeout(int fd, client_t *client)
 }
 
 static int
-parse_http_request(int fd, client_t *client, char *buf, ssize_t r)
+parse_http_request(int fd, client_t *client, ssize_t r)
 {
-    int nread = 0;
+    int ret = 0;
     request *req = NULL;
 
-    BDEBUG("fd:%d \n%.*s", fd, (int)r, buf);
-    nread = execute_parse(client, buf, r);
-    BDEBUG("read request fd %d readed %d nread %d", fd, (int)r, nread);
+    BDEBUG("fd:%d\n%.*s", fd, (int)(r + client->read_len), client->read_buff);
+    ret = execute_parse(client, r);
+    BDEBUG("read request fd %d readed %zd nread %d", fd, r, ret);
 
-    req = client->current_req;
-
-    if (client->upgrade) {
-        PyErr_SetString(PyExc_IOError,"unknow protocol");
-        return -1;
-    } else {
-        if (nread != r || req->bad_request_code > 0) {
-            if (req == NULL) {
-                DEBUG("fd %d bad_request code 400", fd);
-                return set_read_error(client, 400);
-            } else {
-                DEBUG("fd %d bad_request code %d", fd,  req->bad_request_code);
-                return set_read_error(client, req->bad_request_code);
-            }
+    req = client->reading_req;
+    client->reading_req = NULL;
+    if (ret == -1 || (req && req->bad_request_code > 0)) {
+        if (req == NULL) {
+            DEBUG("fd %d bad_request code 400", fd);
+            return set_read_error(client, 400);
+        } else {
+            DEBUG("fd %d bad_request code %d", fd,  req->bad_request_code);
+            return set_read_error(client, req->bad_request_code);
         }
     }
-
-    if (parser_finish(client) > 0) {
-        return 1;
-    }
-    return 0;
+    BDEBUG("complete: %d", client->complete);
+    return client->complete;
 }
 
 static int
 read_request(picoev_loop *loop, int fd, client_t *client, char call_time_update)
 {
-    char buf[READ_BUF_SIZE];
     ssize_t r;
 
     if (!client->keep_alive) {
         picoev_set_timeout(loop, fd, READ_TIMEOUT_SECS);
     }
 
-    r = read(client->fd, buf, sizeof(buf));
+    r = read(client->fd, client->read_buff + client->read_len,
+             sizeof(client->read_buff) - client->read_len);
     switch (r) {
-        case 0: 
-            return set_read_error(client, 503);
-        case -1:
-            // Error
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // try again later
-                return 0;
+    case 0: 
+        return set_read_error(client, 503);
+    case -1:
+        // Error
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // try again later
+            return 0;
+        } else {
+            // Fatal error
+            client->keep_alive = 0;
+            if (errno == ECONNRESET) {
+                client->header_done = 1;
+                client->response_closed = 1;
             } else {
-                // Fatal error
-                client->keep_alive = 0;
-                if (errno == ECONNRESET) {
-                    client->header_done = 1;
-                    client->response_closed = 1;
-                } else {
-                    PyErr_SetFromErrno(PyExc_IOError);
-                    /* write_error_log(__FILE__, __LINE__);  */
-                    call_error_logger();
-                }
-                return set_read_error(client, 500);
+                PyErr_SetFromErrno(PyExc_IOError);
+                /* write_error_log(__FILE__, __LINE__);  */
+                call_error_logger();
             }
-        default:
-            if (call_time_update) {
-                cache_time_update();
-            }
-            return parse_http_request(fd, client, buf, r);
-
+            return set_read_error(client, 500);
+        }
+    default:
+        if (call_time_update) {
+            cache_time_update();
+        }
+        return parse_http_request(fd, client, r);
     }
 }
 
 static void
 read_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
 {
-    client_t *client = ( client_t *)(cb_arg);
+    client_t *client = (client_t *)(cb_arg);
     int finish = 0;
 
     if ((events & PICOEV_TIMEOUT) != 0) {
         finish = read_timeout(fd, client);
-
     } else if ((events & PICOEV_READ) != 0) {
         finish = read_request(loop, fd, client, 0);
     }
-    if (finish == 1) {
+    if (finish > 0) {
         if (!picoev_del(main_loop, client->fd)) {
             activecnt--;
             DEBUG("activecnt:%d", activecnt);
         }
         if (check_status_code(client) > 0) {
-            //current request ok
             if (prepare_call_wsgi(client) > 0) {
                 call_wsgi_handler(client);
+            } else {
+                RDEBUG("failed to prepare_call_wsgi()");
             }
         }
         return;
@@ -941,12 +925,15 @@ accept_callback(picoev_loop* loop, int fd, int events, void* cb_arg)
                 init_parser(client, server_name, server_port);
 
                 finish = read_request(loop, fd, client, 1);
-                if (finish == 1) {
+                if (finish > 0) {
+                    client->complete--;
                     if (check_status_code(client) > 0) {
                         //current request ok
                         if (prepare_call_wsgi(client) > 0) {
                             call_wsgi_handler(client);
                         }
+                    } else {
+                        break;
                     }
                 } else if (finish == 0) {
                     ret = picoev_add(loop, client_fd, PICOEV_READ, keep_alive_timeout, read_callback, (void *)client);
@@ -978,7 +965,6 @@ setup_server_env(void)
     
     ClientObject_list_fill();
     client_t_list_fill();
-    parser_list_fill();
     request_list_fill();
     buffer_list_fill();
     InputObject_list_fill();
@@ -999,7 +985,6 @@ clear_server_env(void)
     clear_start_response();
     clear_static_env();
     client_t_list_clear();
-    parser_list_clear();
     
     ClientObject_list_clear();
     request_list_clear();
@@ -1390,8 +1375,8 @@ fire_timers(void)
     while(q->size > 0 && loop_done && activecnt > 0) {
 
         timer = q->heap[0];
-        DEBUG("seconds:%d", timer->seconds);
-        DEBUG("now:%d", now);
+        DEBUG("seconds:%d", (int)timer->seconds);
+        DEBUG("now:%d", (int)now);
         if (timer->seconds <= now) {
             //call
             timer = heappop(q);
@@ -1431,7 +1416,7 @@ listen_all_sockets(void)
     }
     
     DEBUG("socks iter %p", iter);
-    DEBUG("socks size %d", PyList_Size(listen_socks));
+    DEBUG("socks size %d", (int)PyList_Size(listen_socks));
 
     while((item =  PyIter_Next(iter))){
 #ifdef PY3
