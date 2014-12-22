@@ -49,12 +49,10 @@ check_platform()
 
 define_macros=[
         ("HTTP_PARSER_DEBUG", "0") ]
-extra_compile_args = []
 install_requires=[]
 
 if develop:
     define_macros.append(("DEVELOP", None))
-    extra_compile_args.append('-Og')
 
 sources = get_sources("minefield", ["*picoev_*"])
 sources = """
@@ -96,7 +94,6 @@ setup(name='minefield',
             include_dirs=[],
             library_dirs=[],
             define_macros=define_macros,
-            extra_compile_args=extra_compile_args,
         )],
 
     classifiers=[
