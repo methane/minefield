@@ -196,7 +196,7 @@ set_query(PyObject *env, char *buf, int len)
     }
 
     if(slen > 1){
-#if PY3
+#ifdef PY3
         obj = PyUnicode_FromStringAndSize(s0, slen-1);
 #else
         obj = PyBytes_FromStringAndSize(s0, slen -1);
@@ -249,7 +249,7 @@ set_path(PyObject *env, char *buf, int len)
     slen = t - s0;
     slen = urldecode(s0, slen);
 
-#if PY3
+#ifdef PY3
     obj = PyUnicode_DecodeUTF8(s0, slen);
 #else
     obj = PyBytes_FromStringAndSize(s0, slen);
@@ -270,7 +270,7 @@ get_http_header_key(const char *s, int len)
     PyObject *obj;
     char *dest;
 
-#if PY3
+#ifdef PY3
     obj = PyUnicode_New(len + prefix_len, 127);
     if (unlikely(obj == NULL)) return NULL;
     dest = (char*)PyUnicode_1BYTE_DATA();
@@ -476,7 +476,7 @@ parse_header(client_t *client, size_t len)
                 return -1;
             }
         }
-#if PY3
+#ifdef PY3
         value = PyUnicode_DecodeLatin1(headers[n].value, headers[n].value_len);
 #else
         value = PyBytes_FromStringAndSize(headers[n].value, headers[n].value_len);
@@ -585,7 +585,7 @@ parse_header(client_t *client, size_t len)
             obj = http_method_mkactivity;
     }
     if (unlikely(obj == NULL)) {
-#if PY3
+#ifdef PY3
         obj = PyUnicode_FromStringAndSize(method, method_len);
 #else
         obj = PyBytes_FromStringAndSize(method, method_len);
