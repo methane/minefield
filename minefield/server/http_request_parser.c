@@ -250,7 +250,7 @@ set_path(PyObject *env, char *buf, int len)
     slen = urldecode(s0, slen);
 
 #ifdef PY3
-    obj = PyUnicode_DecodeUTF8(s0, slen);
+    obj = PyUnicode_FromStringAndSize(s0, slen);
 #else
     obj = PyBytes_FromStringAndSize(s0, slen);
 #endif
@@ -273,7 +273,7 @@ get_http_header_key(const char *s, int len)
 #ifdef PY3
     obj = PyUnicode_New(len + prefix_len, 127);
     if (unlikely(obj == NULL)) return NULL;
-    dest = (char*)PyUnicode_1BYTE_DATA();
+    dest = (char*)PyUnicode_1BYTE_DATA(obj);
 #else
     obj = PyBytes_FromStringAndSize(NULL, len + prefix_len);
     if (unlikely(obj == NULL)) return NULL;
@@ -477,7 +477,7 @@ parse_header(client_t *client, size_t len)
             }
         }
 #ifdef PY3
-        value = PyUnicode_DecodeLatin1(headers[n].value, headers[n].value_len);
+        value = PyUnicode_DecodeLatin1(headers[n].value, headers[n].value_len, NULL);
 #else
         value = PyBytes_FromStringAndSize(headers[n].value, headers[n].value_len);
 #endif
@@ -520,7 +520,7 @@ parse_header(client_t *client, size_t len)
     if (unlikely(ret == -1))
         return -1;
 
-    if (*path != '/') {
+    if (*path != '/' || path_len > LIMIT_PATH) {
         //TODO: support absolute-URI
         req->bad_request_code = 400;
         return -1;
