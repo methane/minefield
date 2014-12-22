@@ -628,7 +628,7 @@ write_headers(client_t *client, char *data, size_t datalen, char is_file)
     }else{
         add_header(bucket, "Connection", 10, "close", 5);
     }
-    
+
     set2bucket(bucket, CRLF, 2);
 
     //write body

@@ -179,10 +179,6 @@ set_query(PyObject *env, char *buf, int len)
     int c, ret, slen = 0;
     char *s0;
     PyObject *obj;
-#ifdef PY3
-    char *c2;
-    PyObject *v;
-#endif
     s0 = buf;
     while(len > 0){
         c = *buf++;
@@ -190,34 +186,32 @@ set_query(PyObject *env, char *buf, int len)
             slen++;
             break;
         }
+        // query       = *( pchar / "/" / "?" )
+        // unreserved  = ALPHA / DIGIT / "-" / "." /       "_" / "~"
+        if (c >= 127) {
+            return 400;  // Bad request
+        }
         len--;
         slen++;
     }
 
     if(slen > 1){
+#if PY3
+        obj = PyUnicode_FromStringAndSize(s0, slen-1);
+#else
         obj = PyBytes_FromStringAndSize(s0, slen -1);
+#endif
         /* DEBUG("query:%.*s", len, PyBytes_AS_STRING(obj)); */
         if(unlikely(obj == NULL)){
-            return -1;
+            return 500;
         }
-        
-#ifdef PY3
-        //TODO CHECK ERROR 
-        c2 = PyBytes_AS_STRING(obj);
-        v = PyUnicode_DecodeLatin1(c2, strlen(c2), NULL);
-        ret = PyDict_SetItem(env, query_string_key, v);
-        Py_DECREF(v);
-#else
         ret = PyDict_SetItem(env, query_string_key, obj);
-#endif
         Py_DECREF(obj);
-        
         if(unlikely(ret == -1)){
-            return -1;
+            return 500;
         }
     }
-    
-    return 1; 
+    return 0; 
 }
 
 
@@ -239,10 +233,9 @@ set_path(PyObject *env, char *buf, int len)
             len -= 2;
         }else if(c == '?'){
             //stop
-            if(set_query(env, buf, len) == -1){
-                //Error
-                return -1;
-            }
+            int ret = set_query(env, buf, len);
+            if (ret != 0)
+                return ret;
             break;
         }else if(c == '#'){
             //stop 
@@ -265,9 +258,9 @@ set_path(PyObject *env, char *buf, int len)
     if(likely(obj != NULL)){
         PyDict_SetItem(env, path_info_key, obj);
         Py_DECREF(obj);
-        return slen;
+        return 0;
     }else{
-        return -1;
+        return 500; // internal server error
     }
 }
 
@@ -527,10 +520,15 @@ parse_header(client_t *client, size_t len)
     if (unlikely(ret == -1))
         return -1;
 
+    if (*path != '/') {
+        //TODO: support absolute-URI
+        req->bad_request_code = 400;
+        return -1;
+    }
     ret = set_path(env, (char*)path, path_len);
-    if(unlikely(ret == -1)){
-       //TODO Error 
-       return -1;
+    if(unlikely(ret != 0)){
+        req->bad_request_code = ret;
+        return -1;
     }
 
     key_upper((char*)method, method_len);
