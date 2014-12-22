@@ -29,8 +29,6 @@
 #include <time.h>
 #include <sys/time.h>
 
-#include "http_parser.h"
-
 #define SERVER "minefield/0.5.6"
 #define MODULE_NAME "minefield.server"
 

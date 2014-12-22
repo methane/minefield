@@ -3,7 +3,6 @@
 
 /* use free_list */
 #define REQUEST_MAXFREELIST 1024
-#define HEADER_MAXFREELIST 1024 * 16
 
 static request *request_free_list[REQUEST_MAXFREELIST];
 static int request_numfree = 0;
@@ -87,7 +86,6 @@ free_request_queue(request_queue *q)
 void
 push_request(request_queue *q, request *req)
 {
-
     if(q->tail){
         q->tail->next = req;
     }else{
@@ -118,19 +116,13 @@ request *
 new_request(void)
 {
     request *req = alloc_request();
-    //request *req = (request *)PyMem_Malloc(sizeof(request));
     memset(req, 0, sizeof(request));
     return req;
 }
 
-
 void
 free_request(request *req)
 {
-    Py_XDECREF(req->path);
-    Py_XDECREF(req->field);
-    Py_XDECREF(req->value);
     dealloc_request(req);
-    //PyMem_Free(req);
 }
 

@@ -55,6 +55,21 @@ if develop:
     define_macros.append(("DEVELOP", None))
 
 sources = get_sources("minefield", ["*picoev_*"])
+sources = """
+minefield/server/buffer.c
+minefield/server/client.c
+minefield/server/heapq.c
+minefield/server/http_request_parser.c
+minefield/server/input.c
+minefield/server/log.c
+minefield/server/request.c
+minefield/server/response.c
+minefield/server/server.c
+minefield/server/time_cache.c
+minefield/server/timer.c
+minefield/server/util.c
+minefield/server/picohttpparser/picohttpparser.c
+""".split()
 sources.append(get_picoev_file())
 
 
@@ -78,7 +93,7 @@ setup(name='minefield',
             sources=sources,
             include_dirs=[],
             library_dirs=[],
-            define_macros=define_macros
+            define_macros=define_macros,
         )],
 
     classifiers=[

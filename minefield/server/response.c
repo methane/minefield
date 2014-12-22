@@ -610,7 +610,7 @@ write_headers(client_t *client, char *data, size_t datalen, char is_file)
     }
     
     // check content_length_set
-    if(data && !client->content_length_set && client->http_parser->http_minor == 1){
+    if(data && !client->content_length_set && client->http_minor == 1){
         //Transfer-Encoding chunked
         add_header(bucket, "Transfer-Encoding", 17, "chunked", 7);
         client->chunked_response = 1;
@@ -628,7 +628,7 @@ write_headers(client_t *client, char *data, size_t datalen, char is_file)
     }else{
         add_header(bucket, "Connection", 10, "close", 5);
     }
-    
+
     set2bucket(bucket, CRLF, 2);
 
     //write body
@@ -1191,7 +1191,7 @@ ResponseObject_call(PyObject *obj, PyObject *args, PyObject *kw)
 
     Py_XDECREF(self->cli->http_status);
 
-    self->cli->http_status = create_status(bytes, bytelen, self->cli->http_parser->http_minor);
+    self->cli->http_status = create_status(bytes, bytelen, self->cli->http_minor);
     /* if(self->cli->http_parser->http_minor == 1){ */
         /* self->cli->http_status =  PyBytes_FromFormat("HTTP/1.1 %s\r\n", PyBytes_AS_STRING(bytes)); */
     /* }else{ */
