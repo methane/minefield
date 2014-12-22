@@ -585,13 +585,8 @@ parse_header(client_t *client, size_t len)
             obj = http_method_mkactivity;
     }
     if (unlikely(obj == NULL)) {
-#ifdef PY3
-        obj = PyUnicode_FromStringAndSize(method, method_len);
-#else
-        obj = PyBytes_FromStringAndSize(method, method_len);
-#endif
-        ret = PyDict_SetItem(env, request_method_key, obj);
-        Py_DECREF(obj);
+        req->bad_request_code = 400;
+        return -1;
     } else {
         ret = PyDict_SetItem(env, request_method_key, obj);
     }
