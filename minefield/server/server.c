@@ -804,8 +804,8 @@ parse_http_request(int fd, client_t *client, ssize_t r)
     BDEBUG("read request fd %d readed %zd nread %d", fd, r, ret);
 
     req = client->reading_req;
-    client->reading_req = NULL;
     if (ret == -1 || (req && req->bad_request_code > 0)) {
+        client->reading_req = NULL;
         if (req == NULL) {
             DEBUG("fd %d bad_request code 400", fd);
             return set_read_error(client, 400);

@@ -364,6 +364,7 @@ message_begin_cb(client_t *client)
 
     req->start_msec = current_msec;
     client->reading_req = req;
+    push_request(client->request_queue, client->reading_req);
     environ = new_environ(client);
     /* client->bad_request_code = 0; */
     /* client->body_type = BODY_TYPE_NONE; */
@@ -612,7 +613,6 @@ message_complete(client_t *client)
 {
     DEBUG("message_complete");
     client->complete++;
-    push_request(client->request_queue, client->reading_req);
     client->reading_req = NULL;
     return 0;
 }
@@ -654,8 +654,11 @@ retry:
     if (!cli->read_header_complete) {
         ret = parse_header(cli, cli->read_len + len);
         cli->read_len += len;  // Used next try when ret == INCOMPLETE
-        if (ret < 0)
+        if (ret == -2) return -2;
+        if (ret < 0) {
+            cli->complete++;
             return ret;
+        }
 
         cli->read_header_complete = 1;
         buf = cli->read_buff + ret;
