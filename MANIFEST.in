@@ -5,4 +5,4 @@ include minefield/server/picoev_epoll.c
 include minefield/server/picoev_kqueue.c
 include minefield/server/picoev_select.c
 include minefield/server/*.h
-
+include minefield/server/picohttpparser/*.[ch]
