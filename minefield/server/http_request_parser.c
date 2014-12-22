@@ -327,7 +327,6 @@ write_body2file(request *req, const char *buffer, size_t buffer_len)
     req->body_readed += buffer_len;
     DEBUG("write_body2file %d bytes", (int)buffer_len);
     return req->body_readed;
-
 }
 
 static int
@@ -666,6 +665,9 @@ retry:
     }
 
     remain = request->body_length - (len + request->body_readed);
+    DEBUG("read_len=%d, body_len=%d, body_readed=%d, len=%d, remain=%d",
+          cli->read_len, request->body_length, request->body_readed, len, remain);
+    cli->read_len = 0;
     if (remain < 0) {
         // Next request is pipelined.
         len += remain;
@@ -675,7 +677,6 @@ retry:
         if (ret < 0) {
             return ret;
         }
-        request->body_readed += len;
         if (remain > 0) {
             return -2; // incomplete
         }
@@ -686,7 +687,6 @@ retry:
         DEBUG("request pipelined. remains %d, offs %d, len %d", -remain, buf-cli->read_buff, len);
         //TODO: prepare to next request.
         memmove(cli->read_buff, buf+len, -remain);
-        cli->read_len = 0;
         len = -remain;
         DEBUG("%.*s", len, cli->read_buff);
         goto retry;
